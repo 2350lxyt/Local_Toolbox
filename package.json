@@ -1,0 +1,17 @@
+{
+  "name": "local-toolbox",
+  "version": "0.1.0",
+  "private": true,
+  "description": "本地工具箱：全部计算在浏览器客户端完成的纯静态工具集，零后端、零第三方请求。",
+  "keywords": ["toolbox", "static-site", "privacy", "client-side", "esm"],
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes serve -l 5173 .",
+    "start": "npx --yes serve -l 5173 .",
+    "preview": "npx --yes serve -l 5173 ."
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
