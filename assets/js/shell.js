@@ -88,7 +88,6 @@ const SHELL_TEMPLATE = `
         <span class="brand__mark" aria-hidden="true">{{BRAND_ICON}}</span>
         <span class="brand__text">
           <span class="brand__name">{{SITE_NAME}}</span>
-          <span class="brand__tag">{{SITE_TAGLINE}}</span>
         </span>
       </a>
     </div>
@@ -96,9 +95,6 @@ const SHELL_TEMPLATE = `
       <p class="nav__label meta-label" id="nav-label">工具集 <span class="nav__count">{{COUNT}}</span></p>
       <ul class="nav__list" data-nav-list></ul>
     </nav>
-    <div class="sidebar__foot">
-      <p class="sidebar__note">{{SHIELD_ICON}}<span>全部计算在本机完成，数据不出设备</span></p>
-    </div>
   </aside>
   <div class="sidebar-backdrop" data-action="close-drawer" aria-hidden="true"></div>
   <div class="shell__main">
@@ -107,9 +103,6 @@ const SHELL_TEMPLATE = `
       <nav class="crumbs" aria-label="当前位置" data-crumbs></nav>
       <div class="topbar__spacer"></div>
       <div class="topbar__actions">
-        <span class="topbar__privacy" title="全部计算在本地浏览器完成">
-          {{SHIELD_ICON}}<span class="topbar__privacy-text">本地计算</span>
-        </span>
         <button class="icon-btn" type="button" data-action="cycle-theme">{{THEME_ICON}}</button>
       </div>
     </header>
@@ -196,9 +189,8 @@ function renderToolGrid() {
 function renderFooter() {
   const host = dom.qs("[data-site-footer]");
   if (!host) return;
-  host.innerHTML =
-    `<span class="foot__privacy">${icon("lock", 14)} 数据不出设备 · 零第三方请求</span>` +
-    `<span class="foot__meta mono">${dom.escapeHtml(SITE.name)} v${dom.escapeHtml(SITE.version)}</span>`;
+  // 页脚只放版本信息：隐私/本地计算表述统一收敛到工具结果面板（docs/DESIGN.md §8.5）
+  host.innerHTML = `<span class="foot__meta mono">${dom.escapeHtml(SITE.name)} v${dom.escapeHtml(SITE.version)}</span>`;
 }
 
 /* --------------------------------------------------------- 侧边栏交互 */
@@ -387,9 +379,7 @@ function bootstrap() {
         HOME: dom.escapeHtml(toSiteUrl("index.html")),
         BRAND_ICON: icon("merge", 18),
         SITE_NAME: dom.escapeHtml(SITE.name),
-        SITE_TAGLINE: dom.escapeHtml(SITE.tagline),
         COUNT: String(TOOLS.length),
-        SHIELD_ICON: icon("shield", 15),
         TOGGLE_ICON: icon("panelLeftClose", 18),
         THEME_ICON: icon("monitor", 18),
       })
