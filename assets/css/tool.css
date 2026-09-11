@@ -6,13 +6,20 @@
 
 /* ------------------------------------------------------------ 工具头部 */
 
+/* 紧凑基线见 docs/DESIGN.md §5.1 */
 .tool-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--sp-6);
-  padding-bottom: var(--sp-6);
+  gap: var(--sp-4);
+  padding-bottom: var(--sp-3);
   border-bottom: 1px solid var(--hairline);
+}
+
+/* 工具页内容区顶部比首页更紧凑。以选择器作用域生效，
+   因此首页 .hero 的主视觉留白不受影响（见 §4.2 / §5.1） */
+body[data-tool] .workspace {
+  padding-top: var(--sp-6);
 }
 
 .tool-head__main {
@@ -23,17 +30,19 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  margin-bottom: var(--sp-3);
+  margin-bottom: var(--sp-1);
 }
 
+/* 刻意使用 --fs-h2（20px）而非 --fs-h1（28px）：紧凑基线，见 §5.1 */
 .tool-head__title {
-  font-size: var(--fs-h1);
+  font-size: var(--fs-h2);
   letter-spacing: -0.02em;
 }
 
+/* 不设宽度上限，让描述优先在一行内完成（见 §5.1 约定 2） */
 .tool-head__desc {
-  max-width: 62ch;
-  margin-top: var(--sp-3);
+  margin-top: var(--sp-1);
+  font-size: var(--fs-sm);
   color: var(--text-body);
 }
 
@@ -41,8 +50,8 @@
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
+  width: var(--sp-10);
+  height: var(--sp-10);
   color: var(--accent);
   background: var(--accent-soft);
   border: 1px solid var(--hairline);
@@ -50,8 +59,8 @@
 }
 
 .tool-head__icon .icon {
-  width: 26px;
-  height: 26px;
+  width: 20px;
+  height: 20px;
 }
 
 /* -------------------------------------------------------------- 面板 */
@@ -60,7 +69,7 @@
   display: grid;
   grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
   gap: var(--sp-5);
-  margin-top: var(--sp-6);
+  margin-top: var(--sp-3);
   align-items: start;
 }
 
@@ -412,8 +421,9 @@ kbd {
 }
 
 @media (max-width: 720px) {
+  /* 与紧凑基线的 20px 同步下调（见 §5.1） */
   .tool-head__title {
-    font-size: 22px;
+    font-size: 18px;
   }
 
   .panel__body,
