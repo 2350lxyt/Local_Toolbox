@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>文本行合并 · 本地工具箱</title>
+    <meta
+      name="description"
+      content="将多行文本按指定分隔符合并为一行，支持自定义前缀与后缀、转义规则与预设模板。全部处理在浏览器本地完成。"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f4f1ea" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)" />
+
+    <!-- 首屏主题引导：必须在样式表之前同步执行，避免明暗切换闪烁 -->
+    <script src="../../assets/js/theme-boot.js"></script>
+
+    <link rel="stylesheet" href="../../assets/css/tokens.css" />
+    <link rel="stylesheet" href="../../assets/css/base.css" />
+    <link rel="stylesheet" href="../../assets/css/shell.css" />
+    <link rel="stylesheet" href="../../assets/css/tool.css" />
+
+    <!-- 工具私有样式（仅本工具使用，不污染共享样式） -->
+    <link rel="stylesheet" href="./text-line-merge.css" />
+  </head>
+
+  <!-- data-tool 用于：1) 左侧列表高亮当前项；2) shell.js 动态挂载对应工具模块 -->
+  <body data-tool="text-line-merge">
+    <noscript>
+      <p class="no-script">
+        本站需要启用 JavaScript 才能运行。所有计算都在你的浏览器本地完成，不会上传任何数据。
+        <a href="../../assets/noscript.html">查看说明</a>
+      </p>
+    </noscript>
+
+    <div id="shell-root"></div>
+
+    <main class="workspace" id="workspace">
+      <header class="tool-head rise" style="--d: 0ms">
+        <div class="tool-head__main">
+          <div class="tool-head__eyebrow">
+            <p class="meta-label">工具 / text-line-merge</p>
+            <span class="badge badge--ok">可用</span>
+          </div>
+          <h1 class="tool-head__title">文本行合并</h1>
+          <p class="tool-head__desc">
+            将多行文本按指定分隔符合并为一行，支持自定义前缀与后缀、去除首尾空白、忽略空行与
+            字符转义；可切换内置预设或把自己的参数组合另存为预设。
+          </p>
+        </div>
+        <div class="tool-head__icon" aria-hidden="true">
+          <svg
+            class="icon"
+            width="26"
+            height="26"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M3 6h6" />
+            <path d="M3 12h6" />
+            <path d="M3 18h6" />
+            <path d="M10 6c3.5 0 3.5 6 7 6" />
+            <path d="M10 18c3.5 0 3.5-6 7-6" />
+            <path d="M17 12h4" />
+            <path d="M18.5 9.5 21 12l-2.5 2.5" />
+          </svg>
+        </div>
+      </header>
+
+      <!-- 工具的具体界面由 tools/text-line-merge/text-line-merge.js 的 init() 渲染 -->
+      <div id="tool-body" class="rise" style="--d: 60ms"></div>
+
+      <footer class="site-foot" data-site-footer></footer>
+    </main>
+
+    <script type="module" src="../../assets/js/shell.js"></script>
+  </body>
+</html>

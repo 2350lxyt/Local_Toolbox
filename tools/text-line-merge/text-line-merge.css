@@ -1,0 +1,273 @@
+/* ==========================================================================
+   工具私有样式：《文本行合并》
+   --------------------------------------------------------------------------
+   约定（见 assets/css/tool.css 文件头）：本文件仅供本工具使用，
+   不得写入通用样式，以免影响其它工具；本工具也不修改共享样式文件。
+   仅复用 assets/css/tokens.css 中的设计令牌。
+   ========================================================================== */
+
+/* 本工具大量使用 hidden 属性切换面板，而 .notice / .empty 等共享类
+   自带 display:flex，会覆盖浏览器默认的 [hidden]{display:none}，
+   故在此显式兜底（作用域仅限本工具页）。 */
+[hidden] {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------ 预设工具条 */
+
+.tlm-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3) var(--sp-5);
+  margin-top: var(--sp-6);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+}
+
+.tlm-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.tlm-toolbar__group .meta-label {
+  white-space: nowrap;
+}
+
+.tlm-preset {
+  width: clamp(190px, 26vw, 300px);
+  padding: 6px var(--sp-3);
+  font-size: var(--fs-sm);
+}
+
+.tlm-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* 工具条内控件整体收紧一档，保持单行节奏 */
+.tlm-toolbar .btn,
+.tlm-toolbar .icon-btn {
+  height: 30px;
+  padding: 0 10px;
+  font-size: var(--fs-xs);
+}
+
+.tlm-toolbar .icon-btn {
+  width: 30px;
+  padding: 0;
+}
+
+.tlm-toolbar .btn .icon,
+.tlm-toolbar .icon-btn .icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* 删除按钮的两段式确认态 */
+.tlm-toolbar .btn.is-armed {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  border-style: solid;
+}
+
+/* --------------------------------------------------------------- 状态行 */
+
+.tlm-status {
+  min-height: 18px;
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.tlm-status:empty {
+  display: none;
+}
+
+.tlm-status[data-tone="ok"] {
+  color: var(--ok);
+}
+
+.tlm-status[data-tone="warn"] {
+  color: var(--warn);
+}
+
+.tlm-status[data-tone="danger"] {
+  color: var(--danger);
+}
+
+/* --------------------------------------------------------- 内联表单/面板 */
+
+.tlm-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+}
+
+.tlm-inline .input {
+  flex: 1 1 220px;
+  min-width: 0;
+  width: auto;
+}
+
+.tlm-migrate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+}
+
+.tlm-migrate__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.tlm-migrate__title {
+  font-size: var(--fs-h3);
+}
+
+.tlm-migrate__note {
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  color: var(--text-muted);
+}
+
+.tlm-migrate__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.tlm-migrate__row .btn {
+  cursor: pointer;
+}
+
+.tlm-migrate__file {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.tlm-migrate__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* 错误提示条紧贴状态行 */
+.tlm-toolbar ~ .notice,
+.tlm-status ~ .notice {
+  margin-top: var(--sp-3);
+}
+
+/* ----------------------------------------------------------- 参数效果片段 */
+
+.tlm-effect {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.tlm-effect code {
+  padding: 1px 6px;
+  font-size: var(--fs-xs);
+  color: var(--text-body);
+  background: var(--bg-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-xs);
+  word-break: break-all;
+}
+
+/* 未启用转义时，该分组整体降为虚线禁用观感（仍保持可读） */
+.tlm-escape-group {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px dashed var(--hairline);
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.tlm-escape-group[data-disabled="true"] {
+  opacity: 0.75;
+}
+
+.tlm-escape-group[data-disabled="true"] .field__label {
+  color: var(--text-muted);
+}
+
+/* --------------------------------------------------------------- 结果区 */
+
+.tlm-result {
+  margin-top: var(--sp-5);
+}
+
+.tlm-output {
+  max-height: 460px;
+  overflow: auto;
+  color: var(--text-body);
+}
+
+/* 复制成功反馈 */
+.tlm-result .btn--primary.is-ok {
+  color: var(--text-invert);
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+/* --------------------------------------------------------------- 响应式 */
+
+@media (max-width: 1080px) {
+  .tlm-preset {
+    width: clamp(180px, 46vw, 300px);
+  }
+}
+
+@media (max-width: 720px) {
+  .tlm-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tlm-toolbar__group {
+    align-items: stretch;
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+
+  .tlm-preset {
+    width: 100%;
+  }
+
+  .tlm-toolbar__actions {
+    justify-content: flex-start;
+  }
+
+  .tlm-result .panel__foot .btn {
+    flex: 1 1 auto;
+  }
+}
