@@ -21,8 +21,8 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3) var(--sp-5);
-  margin-top: var(--sp-6);
-  padding: var(--sp-3) var(--sp-4);
+  margin-top: var(--sp-4);
+  padding: var(--sp-2) var(--sp-3);
   background: var(--bg-surface);
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
@@ -82,15 +82,16 @@
 
 /* --------------------------------------------------------------- 状态行 */
 
+/* 无论有无内容都固定占位：状态出现/消失时不改变页面高度，
+   既避免内容跳动，也让「合并后滚动」的定位结果稳定可预期。
+   ⚠️ 不得改回 `:empty { display: none }`，否则会重新引入布局抖动
+   （详见 docs/DESIGN.md §10.6「顶部紧凑节奏」）。 */
 .tlm-status {
-  min-height: 18px;
-  margin-top: var(--sp-2);
+  min-height: 16px;
+  margin-top: var(--sp-1);
   font-size: var(--fs-xs);
+  line-height: 16px;
   color: var(--text-muted);
-}
-
-.tlm-status:empty {
-  display: none;
 }
 
 .tlm-status[data-tone="ok"] {
@@ -220,12 +221,29 @@
   color: var(--text-muted);
 }
 
-/* --------------------------------------------------------------- 结果区 */
+/* ------------------------------------------------- 主操作条（合并按钮） */
 
-.tlm-result {
-  margin-top: var(--sp-5);
+/* 紧贴输入面板正下方、横跨左列整宽；本工具唯一的主操作入口 */
+.tlm-action-bar {
+  display: flex;
+  align-items: center;
 }
 
+.tlm-action-bar .btn {
+  flex: 1 1 auto;
+  height: 40px;
+  font-size: var(--fs-body);
+  letter-spacing: 0.02em;
+}
+
+.tlm-action-bar .btn .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* --------------------------------------------------------------- 结果区 */
+
+/* 输出面板与输入面板同处左列、上下相邻，间距由 .panel-stack 的 gap 统一控制 */
 .tlm-output {
   max-height: 460px;
   overflow: auto;
@@ -244,6 +262,39 @@
 @media (max-width: 1080px) {
   .tlm-preset {
     width: clamp(180px, 46vw, 300px);
+  }
+
+  /* 折为单列时重排为「输入 → 参数 → 合并 → 输出 → 统计」，
+     避免参数被挤到输出面板之后。
+     两个 .panel-stack 用 display:contents 退掉包裹层（均为无语义 div），
+     使其子块直接成为 .panel-grid 的弹性项，从而可用 order 重排。 */
+  .panel-grid {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel-grid > .panel-stack {
+    display: contents;
+  }
+
+  .tlm-block--input {
+    order: 1;
+  }
+
+  .tlm-block--options {
+    order: 2;
+  }
+
+  .tlm-action-bar {
+    order: 3;
+  }
+
+  .tlm-result {
+    order: 4;
+  }
+
+  .tlm-block--stats {
+    order: 5;
   }
 }
 

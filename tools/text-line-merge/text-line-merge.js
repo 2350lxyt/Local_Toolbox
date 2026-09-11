@@ -427,31 +427,61 @@ const TEMPLATE = `
 </div>
 
 <div class="panel-grid">
-  <section class="panel" aria-labelledby="tlm-panel-input">
-    <div class="panel__head">
-      <h2 class="panel__title" id="tlm-panel-input">__I_INPUT__ 输入文本</h2>
-      <span class="panel__hint" data-input-lines>0 行</span>
-    </div>
-    <div class="panel__body">
-      <div class="field">
-        <div class="field__label">
-          <span>待合并内容</span>
-          <span class="field__hint">每行一段，支持粘贴任意多行文本</span>
-        </div>
-        <textarea class="textarea" id="tlm-input" spellcheck="false"
-                  placeholder="在此粘贴需要合并的多行文本…" aria-describedby="tlm-input-note"></textarea>
-        <p class="field__hint" id="tlm-input-note">示例：第一行 / 第二行 / 第三行</p>
-      </div>
-    </div>
-    <div class="panel__foot">
-      <button class="btn btn--ghost" type="button" data-action="clear-input">__I_TRASH__ 清空</button>
-      <span class="panel__spacer"></span>
-      <span class="panel__hint">快捷键 <kbd>Ctrl</kbd> + <kbd>Enter</kbd> 执行合并</span>
-    </div>
-  </section>
-
+  <!-- 左列：纵向工作流（输入 → 合并 → 输出），输入与输出构成「吕」字形 -->
   <div class="panel-stack">
-    <section class="panel" aria-labelledby="tlm-panel-options">
+    <section class="panel tlm-block--input" aria-labelledby="tlm-panel-input">
+      <div class="panel__head">
+        <h2 class="panel__title" id="tlm-panel-input">__I_INPUT__ 输入文本</h2>
+        <span class="panel__hint" data-input-lines>0 行</span>
+      </div>
+      <div class="panel__body">
+        <div class="field">
+          <div class="field__label">
+            <span>待合并内容</span>
+            <span class="field__hint">每行一段，支持粘贴任意多行文本</span>
+          </div>
+          <textarea class="textarea" id="tlm-input" spellcheck="false"
+                    placeholder="在此粘贴需要合并的多行文本…" aria-describedby="tlm-input-note"></textarea>
+          <p class="field__hint" id="tlm-input-note">示例：第一行 / 第二行 / 第三行</p>
+        </div>
+      </div>
+      <div class="panel__foot">
+        <button class="btn btn--ghost" type="button" data-action="clear-input">__I_TRASH__ 清空</button>
+        <span class="panel__spacer"></span>
+        <span class="panel__hint">快捷键 <kbd>Ctrl</kbd> + <kbd>Enter</kbd> 执行合并</span>
+      </div>
+    </section>
+
+    <!-- 主操作条：紧贴输入面板正下方，横跨左列整宽 -->
+    <div class="tlm-action-bar">
+      <button class="btn btn--primary" type="button" data-action="merge">__I_MERGE__ 合并</button>
+    </div>
+
+    <!-- 输出面板：位于输入面板正下方，与输入面板共同构成「吕」字形 -->
+    <section class="panel tlm-result" aria-labelledby="tlm-panel-output">
+      <div class="panel__head">
+        <h2 class="panel__title" id="tlm-panel-output">__I_OUTPUT__ 合并结果</h2>
+        <span class="panel__hint mono" data-result-meta>单行输出</span>
+      </div>
+      <div class="panel__body">
+        <div class="output tlm-output" data-output hidden></div>
+        <div class="empty" data-output-empty>
+          <p class="empty__title">暂无结果</p>
+          <p class="empty__text">在上方输入多行文本后，合并结果会实时显示在这里。</p>
+        </div>
+      </div>
+      <div class="panel__foot" data-output-foot>
+        <button class="btn btn--primary" type="button" data-action="copy">__I_COPY__ 复制结果</button>
+        <button class="btn" type="button" data-action="download">__I_DOWNLOAD__ 下载为 .txt</button>
+        <span class="panel__spacer"></span>
+        <span class="panel__hint">零网络请求 · 零数据上传</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- 右列：独立参数列（选项 + 统计），不占用页面底部空间 -->
+  <div class="panel-stack">
+    <section class="panel tlm-block--options" aria-labelledby="tlm-panel-options">
       <div class="panel__head">
         <h2 class="panel__title" id="tlm-panel-options">__I_REFRESH__ 合并选项</h2>
         <span class="panel__hint">实时预览</span>
@@ -515,13 +545,9 @@ const TEMPLATE = `
           </select>
         </div>
       </div>
-      <div class="panel__foot">
-        <button class="btn btn--primary" type="button" data-action="merge">__I_MERGE__ 合并</button>
-        <span class="panel__hint">全部计算在本地完成</span>
-      </div>
     </section>
 
-    <section class="panel" aria-labelledby="tlm-panel-stats">
+    <section class="panel tlm-block--stats" aria-labelledby="tlm-panel-stats">
       <div class="panel__head">
         <h2 class="panel__title" id="tlm-panel-stats">统计</h2>
       </div>
@@ -544,26 +570,6 @@ const TEMPLATE = `
     </section>
   </div>
 </div>
-
-<section class="panel tlm-result" aria-labelledby="tlm-panel-output">
-  <div class="panel__head">
-    <h2 class="panel__title" id="tlm-panel-output">__I_OUTPUT__ 合并结果</h2>
-    <span class="panel__hint mono" data-result-meta>单行输出</span>
-  </div>
-  <div class="panel__body">
-    <div class="output tlm-output" data-output hidden></div>
-    <div class="empty" data-output-empty>
-      <p class="empty__title">暂无结果</p>
-      <p class="empty__text">在上方输入多行文本后，合并结果会实时显示在这里。</p>
-    </div>
-  </div>
-  <div class="panel__foot">
-    <button class="btn btn--primary" type="button" data-action="copy">__I_COPY__ 复制结果</button>
-    <button class="btn" type="button" data-action="download">__I_DOWNLOAD__ 下载为 .txt</button>
-    <span class="panel__spacer"></span>
-    <span class="panel__hint">零网络请求 · 零数据上传</span>
-  </div>
-</section>
 `;
 
 const ICON_TOKENS = {
@@ -665,6 +671,7 @@ export function init(ctx) {
     escapeMode: el("#tlm-escape-mode"),
     output: el("[data-output]"),
     outputEmpty: el("[data-output-empty]"),
+    outputFoot: el("[data-output-foot]"),
     resultMeta: el("[data-result-meta]"),
     statInputLines: el('[data-stat="input-lines"]'),
     statMergedLines: el('[data-stat="merged-lines"]'),
@@ -1102,6 +1109,49 @@ export function init(ctx) {
     }
   }
 
+  /**
+   * 把输出面板底部（含「复制结果」按钮）滚动进视口。
+   * 仅在该区域被视口遮挡时才滚动；已完整可见时保持不动，避免无谓跳动。
+   */
+  function scrollToOutputBottom() {
+    const target = nodes.outputFoot;
+    if (!target) return;
+
+    const margin = 24;
+    const rect = target.getBoundingClientRect();
+    const overflow = rect.bottom - (window.innerHeight - margin);
+    if (overflow <= 0) return;
+
+    let reduceMotion = false;
+    try {
+      reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    } catch (error) {
+      reduceMotion = false;
+    }
+
+    const maxTop = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    const top = Math.min(Math.max(0, window.scrollY + overflow), maxTop);
+    window.scrollTo({ top, behavior: reduceMotion ? "auto" : "smooth" });
+  }
+
+  /**
+   * 手动触发合并（主操作条按钮与 Ctrl/Cmd+Enter 共用）。
+   * 与防抖实时预览的区别：立即结算，并滚动到输出区底部，便于紧接着复制。
+   */
+  function triggerMerge() {
+    clearTimer("debounce");
+    refreshNow();
+
+    if (state.result === "") {
+      setStatus("暂无可合并的内容。", "warn");
+      return;
+    }
+    setStatus("已按当前参数合并", "ok");
+
+    // 等一帧，确保输出面板尺寸已按新结果更新后再测量位置
+    window.requestAnimationFrame(scrollToOutputBottom);
+  }
+
   function onOptionChange() {
     markDirty();
     syncEscapeGroup();
@@ -1164,11 +1214,7 @@ export function init(ctx) {
     bind(node, "change", onOptionChange);
   });
 
-  bind(nodes.actions.merge, "click", () => {
-    clearTimer("debounce");
-    refreshNow();
-    setStatus("已按当前参数合并", "ok");
-  });
+  bind(nodes.actions.merge, "click", () => triggerMerge());
   bind(nodes.actions.clear, "click", clearInput);
   bind(nodes.actions.copy, "click", copyResult);
   bind(nodes.actions.download, "click", downloadResult);
@@ -1199,9 +1245,7 @@ export function init(ctx) {
   bind(document, "keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
       event.preventDefault();
-      clearTimer("debounce");
-      refreshNow();
-      setStatus("已按当前参数合并", "ok");
+      triggerMerge();
       return;
     }
     if (event.key === "Escape") {
