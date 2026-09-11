@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>需要启用 JavaScript · 本地工具箱</title>
+    <meta name="color-scheme" content="light dark" />
+    <link rel="stylesheet" href="./css/tokens.css" />
+    <link rel="stylesheet" href="./css/base.css" />
+    <link rel="stylesheet" href="./css/tool.css" />
+  </head>
+
+  <body>
+    <main class="workspace" id="workspace" style="max-width: 720px">
+      <header class="tool-head">
+        <div class="tool-head__main">
+          <p class="meta-label">提示</p>
+          <h1 class="tool-head__title">需要启用 JavaScript</h1>
+          <p class="tool-head__desc">
+            本工具集的所有计算都在你的浏览器本地完成，因此必须启用 JavaScript 才能使用。
+            服务端不参与任何计算，也没有任何备用接口。
+          </p>
+        </div>
+      </header>
+
+      <div class="notice notice--warn" role="status">
+        <span class="notice__icon" aria-hidden="true">!</span>
+        <div class="notice__body">
+          <p class="notice__title">如何启用</p>
+          <p class="notice__text">
+            请在浏览器设置中允许本站运行 JavaScript，然后刷新页面。
+          </p>
+        </div>
+      </div>
+
+      <div class="notice">
+        <div class="notice__body">
+          <p class="notice__title">隐私说明</p>
+          <p class="notice__text">
+            本站不发送任何网络请求、不加载第三方资源，也不接收或存储你的任何数据。
+          </p>
+        </div>
+      </div>
+
+      <footer class="site-foot">
+        <span class="foot__privacy">数据不出设备 · 零第三方请求</span>
+        <span class="foot__meta mono">本地工具箱 v0.1.0</span>
+      </footer>
+    </main>
+  </body>
+</html>

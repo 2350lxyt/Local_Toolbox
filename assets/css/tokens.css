@@ -1,0 +1,182 @@
+/* ==========================================================================
+   设计令牌 (Design Tokens)
+   美学方向：工业实用主义 / 暖灰纸感 / 焦橙强调 / 发丝描边
+   所有令牌均通过 CSS 自定义属性实现，明暗双主题共用同一套语义变量。
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* ---------- 基础色板：暖灰纸感 ---------- */
+  --paper-0: #ffffff;
+  --paper-1: #f4f1ea;
+  --paper-2: #ede9e0;
+  --paper-3: #e4dfd3;
+
+  --ink-900: #17150f;
+  --ink-700: #5c5648;
+  --ink-500: #6e6757;
+  --ink-300: #a8a196;
+
+  --brand-700: #9a3412;
+  --brand-600: #c2410c;
+  --brand-100: #fdece3;
+
+  --green-600: #2e7d5b;
+  --amber-600: #b45309;
+  --red-600: #b42318;
+  --blue-600: #2563a8;
+
+  /* ---------- 语义颜色：背景 ---------- */
+  --bg-base: var(--paper-1);
+  --bg-surface: var(--paper-0);
+  --bg-inset: var(--paper-2);
+  --bg-sunken: var(--paper-3);
+  --bg-hover: rgba(23, 21, 15, 0.045);
+  --bg-active: var(--brand-100);
+  --bg-scrim: rgba(18, 17, 16, 0.42);
+
+  /* ---------- 语义颜色：文字 ---------- */
+  --text-strong: var(--ink-900);
+  --text-body: var(--ink-700);
+  --text-muted: var(--ink-500);
+  --text-faint: var(--ink-300);
+  --text-invert: #f5f2ea;
+
+  /* ---------- 语义颜色：描边 ---------- */
+  --hairline: #dcd6c9;
+  --hairline-strong: #c7c0b0;
+
+  /* ---------- 语义颜色：强调 ---------- */
+  --accent: var(--brand-600);
+  --accent-hover: var(--brand-700);
+  --accent-soft: var(--brand-100);
+  --accent-ring: rgba(194, 65, 12, 0.32);
+  --accent-contrast: #ffffff;
+
+  /* ---------- 语义颜色：状态 ---------- */
+  --ok: var(--green-600);
+  --ok-soft: rgba(46, 125, 91, 0.1);
+  --warn: var(--amber-600);
+  --warn-soft: rgba(180, 83, 9, 0.12);
+  --danger: var(--red-600);
+  --danger-soft: rgba(180, 35, 24, 0.1);
+  --info: var(--blue-600);
+  --info-soft: rgba(37, 99, 168, 0.1);
+
+  /* ---------- 字体 ---------- */
+  --font-sans: "DIN Next", Bahnschrift, "思源黑体", "Source Han Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, "SFMono-Regular", Menlo,
+    "DejaVu Sans Mono", "Courier New", monospace;
+
+  --fs-display: 30px;
+  --fs-h1: 28px;
+  --fs-h2: 20px;
+  --fs-h3: 15px;
+  --fs-body: 14px;
+  --fs-sm: 13px;
+  --fs-xs: 11px;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  --lh-tight: 1.25;
+  --lh-normal: 1.55;
+  --lh-loose: 1.75;
+
+  --tracking-label: 0.12em;
+  --tracking-tight: -0.01em;
+
+  /* ---------- 间距刻度 ---------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  /* ---------- 圆角 ---------- */
+  --r-xs: 3px;
+  --r-sm: 5px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-pill: 999px;
+
+  /* ---------- 阴影：双层柔和，配合发丝描边使用 ---------- */
+  --shadow-1: 0 1px 1px rgba(23, 21, 15, 0.04),
+    0 1px 2px rgba(23, 21, 15, 0.06);
+  --shadow-2: 0 1px 2px rgba(23, 21, 15, 0.05),
+    0 10px 28px -14px rgba(23, 21, 15, 0.24);
+  --shadow-3: 0 2px 4px rgba(23, 21, 15, 0.06),
+    0 24px 56px -24px rgba(23, 21, 15, 0.32);
+
+  /* ---------- 纹理 ---------- */
+  --grid-line: rgba(23, 21, 15, 0.045);
+  --grid-size: 32px;
+
+  /* ---------- 动效 ---------- */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+  --ease-out: cubic-bezier(0.22, 0.85, 0.24, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ---------- 布局尺寸 ---------- */
+  --sidebar-w: 264px;
+  --sidebar-w-collapsed: 64px;
+  --topbar-h: 56px;
+  --content-max: 1280px;
+}
+
+/* ==========================================================================
+   深色主题：暖调炭黑，保持同样的层级与对比度
+   ========================================================================== */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-base: #121110;
+  --bg-surface: #1b1917;
+  --bg-inset: #262320;
+  --bg-sunken: #0d0c0b;
+  --bg-hover: rgba(245, 242, 234, 0.06);
+  --bg-active: rgba(232, 112, 31, 0.16);
+  --bg-scrim: rgba(0, 0, 0, 0.6);
+
+  --text-strong: #f5f2ea;
+  --text-body: #d3ccbf;
+  --text-muted: #a8a196;
+  --text-faint: #6f6960;
+  --text-invert: #17150f;
+
+  --hairline: #2e2a26;
+  --hairline-strong: #3d3833;
+
+  --accent: #e8701f;
+  --accent-hover: #f7903f;
+  --accent-soft: rgba(232, 112, 31, 0.14);
+  --accent-ring: rgba(232, 112, 31, 0.42);
+  --accent-contrast: #17150f;
+
+  --ok: #4caf86;
+  --ok-soft: rgba(76, 175, 134, 0.14);
+  --warn: #e0962f;
+  --warn-soft: rgba(224, 150, 47, 0.14);
+  --danger: #e2604f;
+  --danger-soft: rgba(226, 96, 79, 0.14);
+  --info: #6aa9e0;
+  --info-soft: rgba(106, 169, 224, 0.14);
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 32px -16px rgba(0, 0, 0, 0.8);
+  --shadow-3: 0 2px 6px rgba(0, 0, 0, 0.55),
+    0 28px 64px -28px rgba(0, 0, 0, 0.9);
+
+  --grid-line: rgba(245, 242, 234, 0.035);
+}
