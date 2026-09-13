@@ -4,8 +4,8 @@
 > 后续任何功能调整都必须先比对本文档；若确需改变既定设计，**必须先更新本文档并写明变更理由**，再改动代码。
 > 提交信息的正文中请引用相关章节（例如 `refs docs/DESIGN.md §10.3`）。
 
-- 文档版本：1.0.0
-- 最近更新：2026-09-11
+- 文档版本：1.1.0
+- 最近更新：2026-09-13
 - 对应代码版本：v0.1.0
 
 ---
@@ -103,6 +103,7 @@
 │   ├── index.html                      工具独立页面
 │   ├── <tool-id>.js                    工具独立模块（仅导出 init）
 │   └── <tool-id>.css                   工具私有样式（可选，仅本工具使用）
+│   ▸ 现有工具：text-line-merge（《文本行合并》§10）、sql-format（《SQL 格式化》§13）
 ├── assets/
 │   ├── css/  tokens.css base.css shell.css tool.css
 │   ├── js/   registry.js shell.js theme.js theme-boot.js icons.js
@@ -332,6 +333,8 @@ toolbox:<全局键>              跨工具/外壳数据
 | `toolbox:sidebar` | 外壳 | 侧边栏收起状态 | `expanded` / `collapsed` |
 | `toolbox:text-line-merge:presets` | 工具 | 自定义预设数组 | `[{ id, name, config, createdAt }]` |
 | `toolbox:text-line-merge:config` | 工具 | 上次参数与预设选择 | `{ config, presetId }` |
+| `toolbox:sql-format:presets` | 工具 | 《SQL 格式化》自定义预设数组 | `[{ id, name, config, createdAt }]` |
+| `toolbox:sql-format:config` | 工具 | 《SQL 格式化》上次参数与预设选择 | `{ config, presetId }` |
 
 ### 8.2 数据边界（必须在界面上如实告知用户）
 
@@ -564,6 +567,7 @@ export function loadSession() / saveSession(config, presetId);
 | 调整配色或间距 | C | 改 `tokens.css` 并同步 §3.2 / §3.4 表格，然后检查全部页面与两套主题 |
 | 换掉某个 CSS 令牌名 | C | 需全仓搜索替换，并同步本文档所有引用 |
 | 新增一个工具 | B | 按 §9 三步；同时在 §8.1 登记其存储键（若有） |
+| 给《SQL 格式化》加一个格式化参数 | B / D | 先在 §13.2 增补字段与默认值，再改 `normalizeConfig` 与控制项；若该参数会改变既有默认输出，属 D，需先确认 |
 | 引入一个 UI 库 / 图标库 | **D** | 违反 R3/R4，必须先取得明确同意 |
 | 加一个「云端同步预设」 | **D** | 违反 R1/R2/R5，必须先取得明确同意 |
 | 把用户输入缓存到本地以便恢复 | **D** | 违反 R5，必须先取得明确同意 |
@@ -573,6 +577,207 @@ export function loadSession() / saveSession(config, presetId);
 - 仅在明确要求时提交；提交信息使用**中文** + Conventional Commits 规范；必要时按功能分批提交。
 - **严禁**提交任何密钥、令牌、口令、私钥、`.env`、个人身份信息、包含用户名的绝对路径。
 - 提交前自检：`git status` 是否包含不该出现的文件；是否误提交了 `.codebuddy/`、临时脚本、本地导出文件。
+
+---
+
+## 12. 版本管理（Git）
+
+> 本节对应 §2.1 技术栈表中的「版本管理」条目。
+
+- **只在明确要求时提交**：严禁在未获用户明确要求时执行 `git commit` / `git push`。
+- 提交信息使用**中文**并遵循 Conventional Commits：`feat(<范围>): <说明>`、
+  `fix(<范围>): <说明>`、`docs: <说明>`、`chore: <说明>`。
+- 提交信息正文引用本文档章节，例如 `refs docs/DESIGN.md §13`；必要时按功能分批提交。
+- 提交前必须做隐私自检：不含密钥/令牌/口令/私钥、个人身份信息、含用户名的绝对路径、
+  `.codebuddy/` 目录与临时脚本。
+
+---
+
+## 13. 《SQL 格式化》功能规格
+
+> 工具 id：`sql-format`；页面 `tools/sql-format/`；模块 v1.0.0；状态 `ready`。
+
+### 13.1 定位与布局例外
+
+面向 **Oracle / PostgreSQL** 的 SQL 编辑器，提供格式化、语法高亮、关键词搜索、
+选中相同文本全部高亮，并含行号、括号匹配、Tab 与自动缩进等基础编辑器能力。
+全部计算在本机完成，不发起任何网络请求，不引用任何第三方资源。
+
+**布局例外（相对 §4.2）**：本工具为**以全宽编辑器为主体**的工作台，主区采用
+`grid: minmax(0,1fr) 320px`（左编辑器 + 右选项窄列），**不套用 §4.2 的 7:5 非对称双栏**。
+理由：代码可读性依赖行宽与行号槽，7:5 会把编辑器压到无法完整展示格式化后的语句；
+而格式化选项虽多，均为短控件，320px 窄列即可容纳。`≤1080px` 时折为上下单列
+（编辑器在上、选项在下）。
+
+全页隐私表述只出现一次，位于编辑器面板脚注（「零网络请求 · 零数据上传」），遵循 §8.5。
+
+### 13.2 参数模型（所有行为都是用户可配置选项）
+
+| 字段 | 类型 | 默认值 | 取值域 | 说明 |
+| --- | --- | --- | --- | --- |
+| `dialect` | `string` | `"oracle"` | `oracle` / `postgres` | 方言；决定保留字/内置函数/数据类型识别集合与特有语法处理 |
+| `indentStyle` | `string` | `"space"` | `space` / `tab` | 缩进单位 |
+| `indentWidth` | `number` | `2` | `2` / `4` / `8` | 空格缩进宽度（`indentStyle: tab` 时忽略） |
+| `keywordCase` | `string` | `"upper"` | `upper` / `lower` / `preserve` | 保留字大小写 |
+| `functionCase` | `string` | `"lower"` | `upper` / `lower` / `preserve` | 内置函数名大小写 |
+| `identifierCase` | `string` | `"preserve"` | `upper` / `lower` / `preserve` | 未加引号标识符大小写；**双引号标识符与字符串永不改写** |
+| `commaPosition` | `string` | `"trailing"` | `trailing` / `leading` | 逗号置于行尾，或作为新行行首 |
+| `clauseNewline` | `boolean` | `true` | — | 是否让 `SELECT` / `FROM` / `WHERE` / `GROUP BY` / `ORDER BY` 等主子句各起一行 |
+| `selectListNewline` | `string` | `"auto"` | `always` / `auto` / `never` | 选择列表是否逐列换行；`auto` 表示仅当该行超过 `lineWidth`（且 `lineWidth > 0`）时换行 |
+| `lineWidth` | `number` | `100` | `0` / `80` / `100` / `120` | 软性行宽上限（字符数）；`0` 表示不限制 |
+| `parenNewline` | `boolean` | `false` | — | 括号内是否换行并缩进（函数参数、`IN` 列表等） |
+| `logicalIndent` | `boolean` | `true` | — | 子句内的 `AND` / `OR` 是否换行并缩进 |
+| `blankLines` | `string` | `"collapse"` | `preserve` / `collapse` | 原有多余空行是保留，还是压缩为单行 |
+
+归一化规则：缺失字段补默认、类型或取值不符回退默认、未知字段丢弃（`normalizeConfig`）。
+
+### 13.3 Oracle / PostgreSQL 方言差异
+
+| 维度 | Oracle | PostgreSQL |
+| --- | --- | --- |
+| 标识符引号 | 双引号 `"..."` | 双引号 `"..."` |
+| 字符串 | `'...'`（`''` 转义）、`q'[...]'`、`n'...'` | `'...'`（`''` 转义）、`E'...'`（反斜杠转义）、`$tag$...$tag$` 美元引用 |
+| 分页 | `ROWNUM` / `FETCH FIRST ... ROWS ONLY` | `LIMIT ... OFFSET ...` |
+| 特有保留字 | `ROWNUM` `DUAL` `NVL` `DECODE` `VARCHAR2` `NVARCHAR2` `NUMBER` `MINUS` `CONNECT` `START` `PRIOR` | `RETURNING` `ILIKE` `SERIAL` `BIGSERIAL` `JSONB` `ARRAY` `CONFLICT` `MATERIALIZED` |
+| 特有运算符/语法 | `(+)` 外连接标记、PL/SQL 块与 `/` 结束符 | `::` 类型转换、`->` / `->>` / `#>` JSON 取值 |
+| 大小写习惯 | 未加引号标识符按大写存储 | 未加引号标识符按小写存储 |
+
+两方言共用「标准 SQL 保留字基集」，再各自并入方言特有保留字。**方言只影响识别集合与该类的
+折行/大小写处理，不改变配置文件格式**。
+
+### 13.4 内置预设（= 一组参数取值，不得含专属逻辑）
+
+| id | 名称 | 参数要点 |
+| --- | --- | --- |
+| `standard` | 标准（默认） | 全默认值（Oracle / 2 空格 / 关键字大写 / 每子句换行） |
+| `compact` | 紧凑风格 | `clauseNewline:false`、`selectListNewline:"never"`、`logicalIndent:false` |
+| `expanded` | 展开风格 | `selectListNewline:"always"`、`parenNewline:true`、`logicalIndent:true` |
+| `leading-comma` | 前导逗号 | `commaPosition:"leading"` |
+| `lowercase` | 关键字小写 | `keywordCase:"lower"`、`functionCase:"lower"` |
+| `indent-4` | 四空格缩进 | `indentWidth:4` |
+| `tab-indent` | Tab 缩进 | `indentStyle:"tab"` |
+| `postgres` | PostgreSQL 惯例 | `dialect:"postgres"` |
+| `oracle` | Oracle 惯例 | `dialect:"oracle"` |
+
+新增预设只需向 `BUILTIN_PRESETS` 追加数据，禁止为其编写任何分支代码（R7）。
+
+### 13.5 编辑器能力规格
+
+- **实现方式（零依赖）**：`textarea`（透明文字，承担输入、选区、光标与浏览器原生撤销）
+  + 高亮覆盖层（`<pre>` 内按逻辑行分块的 `<span>`）+ 左侧行号槽；三者共用同一套字体、
+  行高、内边距与软换行规则，纵向滚动通过 `transform` 同步。
+- **语法高亮层级**：保留字（`--accent` 系）、数据类型与内置函数（`--warn` 系）、
+  字符串（`--ok` 系）、数字（`--info` 系）、注释（`--text-faint` 斜体）、
+  运算符与标点（`--text-muted`）、双引号标识符、绑定变量；普通标识符使用默认文字色。
+  明暗双主题均满足 WCAG AA，且信息不单靠颜色传达。
+- **关键词搜索**：搜索条默认收起，`Ctrl/Cmd + F` 展开并聚焦；支持「区分大小写」与
+  「全词匹配」；显示「当前序号 / 命中总数」；`Enter` / `Shift + Enter` 与上/下一个按钮
+  循环定位并把当前命中滚动进可视区；命中项浅底高亮，当前命中额外描边；无命中时给出可读提示。
+- **选中相同文本全部高亮**：当选区非空、不含换行、长度 ≤ **64** 字符时，自动高亮全文
+  所有相同出现处（区分大小写），样式与搜索命中可区分；选区变化立即重算。
+- **行号**：逻辑行逐行编号（`aria-hidden`），随内容软换行高度自适应，纵向滚动同步。
+- **括号匹配**：光标邻近 `()` / `[]` / `{}` 时与配对括号共同高亮；未配对时仅光标侧括号
+  以 `--danger` 错误态呈现。
+- **Tab / 自动缩进**：`Tab` 单行插入一个缩进单位、多行选区整体缩进；`Shift + Tab` 反缩进；
+  `Enter` 按当前行缩进与括号深度自动续缩进；缩进改动优先走
+  `document.execCommand("insertText")` 以保留浏览器原生撤销，失败时降级为
+  `setRangeText` + 手动派发 `input` 事件。
+- **快捷键**：`Ctrl/Cmd + Enter` 格式化；`Ctrl/Cmd + F` 搜索；`Tab` / `Shift + Tab` 缩进；
+  `Esc` 依次关闭最上层内联面板并收起搜索条。
+- **格式化是显式动作（重要）**：本工具的输入区与结果区是**同一块画布**，因此参数（含方言、预设）
+  的改动只影响**下一次**格式化，**不会**在编辑过程中自动改写正文——否则会持续打断用户输入、
+  破坏撤销栈。唯一入口是「格式化」按钮与 `Ctrl/Cmd + Enter`；选项面板的提示文案必须如实写明
+  「点『格式化』后生效」，不得写成「即时生效」。
+- **格式化必须覆盖式替换（重要）**：格式化结果用于**整体替换编辑区现有内容**（含用户当前选区），
+  **绝不**插入到光标处。实现上有两条硬性要求，缺一即出缺陷：
+  1. 写入前必须让编辑区**取回焦点**。点击「格式化」按钮后焦点在按钮上，此时 `document.execCommand`
+     的编辑命令会静默失效或落到旧的插入点，表现为「格式化结果被拼接到原文后面」；
+  2. 必须先**全选**现有内容再写入，并在写入后**校验实际结果**（值是否真的改变），未生效时退化为
+     `setRangeText`——`execCommand` 会在失败时返回 `true`，不可只依据返回值判断。
+  写入完成后光标归位到文档开头，并清除选中相同文本的高亮。
+
+### 13.6 渲染与性能约定
+
+- 高亮渲染使用 **`requestAnimationFrame` 合并**（而非 180ms 防抖）：高亮必须逐键跟随输入，
+  防抖会造成明显迟滞；§6 的 180ms 防抖针对的是「结果类实时计算」（如《文本行合并》的预览）。
+  统计数字（行数 / 字符数 / 光标位置）同步即时更新。
+- 高亮层整层用**一次字符串拼接 + 一次赋值**渲染，不逐 token 建 DOM。
+- **同一命中跨多个 token 时必须合并为一个标记元素**：`a.id` 这类命中会覆盖 `a` / `.` / `id`
+  三个 token，若每个 token 段各套一个 `<mark>`，圆角与「当前命中」描边会被切断成多块。
+  正确做法是按「同一标记覆盖的连续段」合并，只输出**一个** `<mark>`，其内部再按 token 分别着色。
+- 滚动同步只在 rAF 中写一次 `transform`，不在 `scroll` 回调里直接读写布局。
+- **超大输入保护**：文本超过 **300000** 字符时停止语法高亮与搜索高亮，仅保留纯文本编辑，
+  并给出可读提示；此时也不计算选中相同文本高亮。
+- 命中渲染上限 **5000** 条，超出只渲染前 5000 条并提示。
+- 高亮层与行号槽的 HTML 由用户输入派生，**全部文本必须经 `dom.escapeHtml` 转义**后再拼接。
+
+### 13.7 导入 / 导出
+
+- 导出结构：
+
+  ```json
+  {
+    "app": "local-toolbox",
+    "tool": "sql-format",
+    "version": 1,
+    "exportedAt": "ISO-8601",
+    "config": { },
+    "presets": [{ "name": "…", "config": { } }]
+  }
+  ```
+
+- 与《文本行合并》一致：导出与「复制 JSON」在无自定义预设时禁用并给出提示；
+  导入支持「选择 `.json` 文件」与「粘贴 JSON 文本」两条路径并共用同一校验函数；
+  同名以导入内容为准覆盖；**导入只恢复预设，不改动当前正在编辑的 SQL 与当前参数**；
+  完成后回报 `导入完成：新增 N 条，覆盖 M 条[，超出上限跳过 K 条][，忽略非法 J 条]`。
+- 上限：自定义预设 **200** 条，名称 **40** 字符。
+
+### 13.8 边界行为（必须保持）
+
+| 场景 | 行为 |
+| --- | --- |
+| 输入为空点击「格式化」 | 提示「暂无可格式化的内容。」，不写入任何文本 |
+| SQL 含未闭合字符串/注释 | 不抛错；未闭合部分整体作为一个 token，格式化不破坏其内容 |
+| 输入含 `--` 行注释 | 注释内容不被改写大小写，且其后同行内容不参与折行重排 |
+| 文本超过 300000 字符 | 跳过高亮与搜索高亮，提示「文本过大，已关闭高亮以保证流畅」 |
+| 搜索框内容为空 | 不产生命中，计数区为空 |
+| 搜索无命中 | 提示「未找到匹配项。」，不移动光标 |
+| 选中内容含换行或超过 64 字符 | 不做相同文本高亮 |
+| 光标在括号内或紧邻括号 | 高亮配对括号；未配对时仅光标侧括号转为错误态 |
+| 格式化时存在挂起的高亮渲染 | 先结算挂起渲染，再读取编辑器当前文本进行格式化 |
+| 点击「格式化」按钮（焦点在按钮上） | **覆盖式替换**编辑区全部内容，绝不插入到光标处（见 §13.5） |
+| 编辑区存在选区时点击「格式化」 | 选区连同全文一起被格式化结果覆盖，且写入后光标归位到开头 |
+| 搜索命中跨越多个 token（如 `a.id`） | 只生成一个 `<mark>`，高亮连续不断裂（见 §13.6） |
+| 重复点击「格式化」 | 结果幂等，提示「当前内容已是该格式，无需调整。」 |
+| 剪贴板不可用 | 提示「复制失败，请手动选择文本复制。」 |
+| `localStorage` 不可用 | 提示仅在当前页面内有效，功能不中断 |
+
+### 13.9 纯函数 API（可导出、可脱离 DOM 验证）
+
+```js
+export const DEFAULT_CONFIG;
+export const BUILTIN_PRESETS;
+export const DIALECTS;                              // ['oracle', 'postgres']
+export function normalizeConfig(partial);
+export function configEquals(a, b);
+export function tokenize(sql, dialect);             // → [{ type, value, start, end }]
+export function buildBracketPairs(tokens);          // → Map<index, index>
+export function findMatches(text, query, options);  // → [{ start, end }]
+export function formatSql(sql, config);             // → 格式化后的 SQL
+export function serializePresets(presets, cfg);
+export function parseImportPayload(raw);
+export function loadCustomPresets() / saveCustomPresets(list);
+export function loadSession() / saveSession(config, presetId);
+```
+
+### 13.10 存储键
+
+| 键 | 内容 |
+| --- | --- |
+| `toolbox:sql-format:presets` | 自定义预设列表 |
+| `toolbox:sql-format:config` | 上次使用的参数与预设选择 |
+
+**SQL 文本本身不做任何持久化**（R5），输入内容只存在于内存与当前 DOM。
 
 ---
 
@@ -611,3 +816,13 @@ export function loadSession() / saveSession(config, presetId);
 | `shell.js` | `SIDEBAR_KEY` | `toolbox:sidebar` |
 | | `NARROW_MEDIA` | `(max-width: 900px)` |
 | `theme.js` | `THEME_KEY` | `toolbox:theme` |
+| `sql-format.js` | `DEBOUNCE_MS` | 0（高亮走 rAF 合并，见 §13.6） |
+| | `FEEDBACK_MS` | 2000（状态行实际清除 = ×2 = 4000ms） |
+| | 复制按钮复原 | 1500ms |
+| | 删除确认超时 | 3000ms |
+| | `MAX_PRESETS` | 200 |
+| | `MAX_NAME_LENGTH` | 40 |
+| | `EXPORT_VERSION` | 1 |
+| | `MAX_HIGHLIGHT_CHARS` | 300000 |
+| | `MAX_MATCHES` | 5000 |
+| | `MAX_SAME_SELECTION` | 64 |
