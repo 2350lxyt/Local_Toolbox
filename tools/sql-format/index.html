@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SQL 格式化 · 本地工具箱</title>
+    <meta
+      name="description"
+      content="格式化 Oracle / PostgreSQL 语句，带语法高亮、关键词搜索与选中文本全部高亮，支持预设模板。全部处理在浏览器本地完成。"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f4f1ea" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)" />
+
+    <!-- 首屏主题引导：必须在样式表之前同步执行，避免明暗切换闪烁 -->
+    <script src="../../assets/js/theme-boot.js"></script>
+
+    <link rel="stylesheet" href="../../assets/css/tokens.css" />
+    <link rel="stylesheet" href="../../assets/css/base.css" />
+    <link rel="stylesheet" href="../../assets/css/shell.css" />
+    <link rel="stylesheet" href="../../assets/css/tool.css" />
+
+    <!-- 工具私有样式（仅本工具使用，不污染共享样式） -->
+    <link rel="stylesheet" href="./sql-format.css" />
+  </head>
+
+  <!-- data-tool 用于：1) 左侧列表高亮当前项；2) shell.js 动态挂载对应工具模块 -->
+  <body data-tool="sql-format">
+    <noscript>
+      <p class="no-script">
+        本站需要启用 JavaScript 才能运行。所有计算都在你的浏览器本地完成，不会上传任何数据。
+        <a href="../../assets/noscript.html">查看说明</a>
+      </p>
+    </noscript>
+
+    <div id="shell-root"></div>
+
+    <main class="workspace" id="workspace">
+      <header class="tool-head rise" style="--d: 0ms">
+        <div class="tool-head__main">
+          <div class="tool-head__eyebrow">
+            <p class="meta-label">工具 / sql-format</p>
+            <span class="badge badge--ok">可用</span>
+          </div>
+          <h1 class="tool-head__title">SQL 格式化</h1>
+          <p class="tool-head__desc">
+            格式化 Oracle / PostgreSQL 语句，支持语法高亮、关键词搜索与预设模板。
+          </p>
+        </div>
+        <div class="tool-head__icon" aria-hidden="true">
+          <svg
+            class="icon"
+            width="26"
+            height="26"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <ellipse cx="12" cy="5" rx="9" ry="3" />
+            <path d="M3 5v14a9 3 0 0 0 18 0V5" />
+            <path d="M3 12a9 3 0 0 0 18 0" />
+          </svg>
+        </div>
+      </header>
+
+      <!-- 工具的具体界面由 tools/sql-format/sql-format.js 的 init() 渲染 -->
+      <div id="tool-body" class="rise" style="--d: 60ms"></div>
+
+      <footer class="site-foot" data-site-footer></footer>
+    </main>
+
+    <script type="module" src="../../assets/js/shell.js"></script>
+  </body>
+</html>

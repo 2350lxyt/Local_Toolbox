@@ -1,0 +1,550 @@
+/* ==========================================================================
+   工具私有样式：《SQL 格式化》
+   --------------------------------------------------------------------------
+   约定（见 assets/css/tool.css 文件头）：本文件仅供本工具使用，
+   不得写入通用样式，以免影响其它工具；本工具也不修改共享样式文件。
+   仅复用 assets/css/tokens.css 中的设计令牌，不硬编码色值与间距。
+   ========================================================================== */
+
+/* 本工具用 hidden 属性切换面板，而 .notice / .empty 等共享类自带
+   display:flex，会覆盖浏览器默认的 [hidden]{display:none}，
+   故在此显式兜底（作用域仅限本工具页）。 */
+[hidden] {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------ 顶部工具条 */
+
+.sf-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3) var(--sp-5);
+  margin-top: var(--sp-4);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+}
+
+.sf-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.sf-toolbar__group .meta-label {
+  white-space: nowrap;
+}
+
+.sf-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.sf-select {
+  width: clamp(150px, 20vw, 220px);
+  padding: 6px var(--sp-3);
+  font-size: var(--fs-sm);
+}
+
+.sf-preset {
+  width: clamp(180px, 24vw, 280px);
+}
+
+/* 工具条内控件整体收紧一档，保持单行节奏 */
+.sf-toolbar .btn,
+.sf-toolbar .icon-btn {
+  height: 30px;
+  padding: 0 10px;
+  font-size: var(--fs-xs);
+}
+
+.sf-toolbar .icon-btn {
+  width: 30px;
+  padding: 0;
+}
+
+.sf-toolbar .btn .icon,
+.sf-toolbar .icon-btn .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.sf-toolbar .btn--primary {
+  height: 32px;
+  padding: 0 var(--sp-4);
+  font-size: var(--fs-sm);
+}
+
+/* 删除按钮的两段式确认态 */
+.sf-toolbar .btn.is-armed {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  border-style: solid;
+}
+
+/* --------------------------------------------------------------- 状态行 */
+
+/* 始终占位：状态出现/消失时不改变页面高度，避免布局抖动 */
+.sf-status {
+  min-height: 16px;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-xs);
+  line-height: 16px;
+  color: var(--text-muted);
+}
+
+.sf-status[data-tone="ok"] {
+  color: var(--ok);
+}
+
+.sf-status[data-tone="warn"] {
+  color: var(--warn);
+}
+
+.sf-status[data-tone="danger"] {
+  color: var(--danger);
+}
+
+/* -------------------------------------------------------- 内联表单/面板 */
+
+.sf-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+}
+
+.sf-inline .input {
+  flex: 1 1 220px;
+  min-width: 0;
+  width: auto;
+}
+
+.sf-migrate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+}
+
+.sf-migrate__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.sf-migrate__title {
+  font-size: var(--fs-h3);
+}
+
+.sf-migrate__note {
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  color: var(--text-muted);
+}
+
+.sf-migrate__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.sf-migrate__row .btn {
+  cursor: pointer;
+}
+
+.sf-migrate__file {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.sf-migrate__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.sf-toolbar ~ .notice,
+.sf-status ~ .notice {
+  margin-top: var(--sp-3);
+}
+
+/* ------------------------------------------------------------- 搜索条 */
+
+.sf-find {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+}
+
+.sf-find .input {
+  width: clamp(170px, 28vw, 320px);
+  padding: 6px var(--sp-3);
+  font-size: var(--fs-sm);
+}
+
+.sf-find .btn,
+.sf-find .icon-btn {
+  height: 30px;
+  padding: 0 10px;
+  font-size: var(--fs-xs);
+}
+
+.sf-find .icon-btn {
+  width: 30px;
+  padding: 0;
+}
+
+.sf-find .btn .icon,
+.sf-find .icon-btn .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.sf-find__count {
+  min-width: 72px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.sf-find__count[data-tone="warn"] {
+  color: var(--warn);
+}
+
+.sf-find__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-xs);
+  color: var(--text-body);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sf-find__check input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+}
+
+.sf-find__spacer {
+  flex: 1 1 auto;
+}
+
+/* --------------------------------------------------------- 主区双栏 */
+
+/* 布局例外（docs/DESIGN.md §13.1）：编辑器为主体，不套用 §4.2 的 7:5 双栏 */
+.sf-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--sp-5);
+  margin-top: var(--sp-3);
+  align-items: start;
+}
+
+.sf-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+/* ----------------------------------------------------------- 编辑器 */
+
+.sf-editor-host {
+  padding: 0;
+}
+
+.sf-editor {
+  --sf-sbw: 0px;
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  height: clamp(360px, 60vh, 720px);
+  overflow: hidden;
+  background: var(--bg-base);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-loose);
+}
+
+/* 行号槽：宽度按行数自适应，纵向与编辑器同步 */
+.sf-gutter {
+  position: relative;
+  overflow: hidden;
+  padding: var(--sp-4) var(--sp-3) var(--sp-4) var(--sp-4);
+  text-align: right;
+  color: var(--text-faint);
+  background: var(--bg-inset);
+  border-right: 1px solid var(--hairline);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.sf-gutter__inner {
+  will-change: transform;
+}
+
+.sf-ln {
+  display: block;
+  min-height: calc(var(--lh-loose) * 1em);
+}
+
+/* 代码区：高亮层在下（不可交互），透明 textarea 在上（承担编辑） */
+.sf-code {
+  position: relative;
+  overflow: hidden;
+}
+
+.sf-scroll {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.sf-highlight {
+  display: block;
+  margin: 0;
+  padding: var(--sp-4);
+  /* 右侧多留出 textarea 滚动条的宽度，使两者内容宽度严格一致 */
+  padding-right: calc(var(--sp-4) + var(--sf-sbw));
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  color: var(--text-body);
+  tab-size: 4;
+}
+
+/* 每个逻辑行一个块：既保证空行有高度，也便于行号槽按实际换行高度对齐 */
+.sf-line {
+  display: block;
+  min-height: calc(var(--lh-loose) * 1em);
+}
+
+.sf-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: var(--sp-4);
+  font: inherit;
+  color: transparent;
+  caret-color: var(--accent);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  resize: none;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  tab-size: 4;
+}
+
+.sf-input::placeholder {
+  color: var(--text-faint);
+}
+
+.sf-input::selection {
+  background: var(--accent-soft);
+  color: transparent;
+}
+
+.sf-input:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent-ring);
+}
+
+/* ------------------------------------------------------- 语法着色 token */
+
+.sf-tok--kw {
+  color: var(--accent);
+  font-weight: var(--fw-medium);
+}
+
+.sf-tok--type {
+  color: var(--warn);
+  font-style: italic;
+}
+
+.sf-tok--func {
+  color: var(--warn);
+}
+
+.sf-tok--str {
+  color: var(--ok);
+}
+
+.sf-tok--num {
+  color: var(--info);
+}
+
+.sf-tok--com {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.sf-tok--op {
+  color: var(--text-muted);
+}
+
+.sf-tok--punct {
+  color: var(--text-faint);
+}
+
+.sf-tok--qident {
+  color: var(--text-strong);
+  font-weight: var(--fw-medium);
+}
+
+.sf-tok--bind {
+  color: var(--danger);
+}
+
+/* --------------------------------------------------- 命中 / 括号匹配标记 */
+
+.sf-hit {
+  background: var(--warn-soft);
+  border-radius: var(--r-xs);
+}
+
+.sf-hit--current {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.sf-same {
+  background: var(--info-soft);
+  border-radius: var(--r-xs);
+}
+
+.sf-bracket {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.sf-bracket--error {
+  background: var(--danger-soft);
+  box-shadow: inset 0 0 0 1px var(--danger);
+}
+
+/* ----------------------------------------------------------- 参数分组 */
+
+.sf-options .field + .field {
+  margin-top: var(--sp-4);
+}
+
+.sf-options__group {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px dashed var(--hairline);
+}
+
+.sf-inline-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.sf-inline-row .select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sf-inline-row .input {
+  flex: 0 0 92px;
+  width: 92px;
+}
+
+.sf-option-hint {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* --------------------------------------------------- 复制成功的内联反馈 */
+
+.sf-layout .panel__foot .btn.is-ok {
+  color: var(--text-invert);
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+/* --------------------------------------------------------------- 响应式 */
+
+@media (max-width: 1080px) {
+  .sf-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sf-editor {
+    height: clamp(320px, 52vh, 560px);
+  }
+}
+
+@media (max-width: 720px) {
+  .sf-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sf-toolbar__group {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--sp-2);
+  }
+
+  .sf-select,
+  .sf-preset {
+    width: 100%;
+  }
+
+  .sf-toolbar__actions {
+    justify-content: flex-start;
+  }
+
+  .sf-find .input {
+    width: 100%;
+  }
+
+  .sf-find__count {
+    min-width: 0;
+  }
+}

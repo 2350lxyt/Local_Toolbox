@@ -16,6 +16,11 @@ const PATHS = {
     '<path d="M10 6c3.5 0 3.5 6 7 6"/><path d="M10 18c3.5 0 3.5-6 7-6"/>' +
     '<path d="M17 12h4"/><path d="M18.5 9.5 21 12l-2.5 2.5"/>',
 
+  /* 工具图标：数据库（《SQL 格式化》） */
+  database:
+    '<ellipse cx="12" cy="5" rx="9" ry="3"/>' +
+    '<path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>',
+
   /* 通用/兜底 */
   dot: '<circle cx="12" cy="12" r="3"/>',
 
@@ -65,6 +70,13 @@ const PATHS = {
   refresh:
     '<path d="M3 12a9 9 0 0 1 15.3-6.4L21 8"/><path d="M21 3v5h-5"/>' +
     '<path d="M21 12a9 9 0 0 1-15.3 6.4L3 16"/><path d="M3 21v-5h5"/>',
+
+  /* 编辑器：搜索与上下定位（《SQL 格式化》） */
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  chevronUp: '<path d="m18 15-6-6-6 6"/>',
+  chevronDown: '<path d="m6 9 6 6 6-6"/>',
+  /* 编辑器：格式化（左对齐排版） */
+  alignLeft: '<path d="M21 6H3"/><path d="M15 12H3"/><path d="M17 18H3"/>',
 
   /* 预设与迁移 */
   save:

@@ -45,6 +45,17 @@ export const TOOLS = [
     status: "ready",
     keywords: ["文本", "合并", "去换行", "前缀", "后缀", "预设"],
   },
+  {
+    id: "sql-format",
+    name: "SQL 格式化",
+    icon: "database",
+    description:
+      "格式化 Oracle / PostgreSQL 语句，带语法高亮、关键词搜索与选中文本全部高亮，并支持预设模板。",
+    path: "tools/sql-format/index.html",
+    entry: "tools/sql-format/sql-format.js",
+    status: "ready",
+    keywords: ["SQL", "格式化", "美化", "Oracle", "PostgreSQL", "高亮", "搜索"],
+  },
 ];
 
 /** 按 id 查找工具记录 */
