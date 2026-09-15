@@ -28,6 +28,7 @@ export const SITE = {
  * @property {string} description 一句话说明
  * @property {string} path        工具页面路径（站点根相对）
  * @property {string} entry       工具处理模块路径（站点根相对）
+ * @property {string[]} [styles]  工具私有样式路径（站点根相对，按顺序生效）
  * @property {'ready'|'planned'} status 状态：ready=可用，planned=开发中
  * @property {string[]} [keywords] 可选关键字，用于后续搜索/过滤
  */
@@ -42,6 +43,7 @@ export const TOOLS = [
       "将多行文本按指定分隔符合并为一行，支持自定义前缀与后缀、转义规则与预设模板。",
     path: "tools/text-line-merge/index.html",
     entry: "tools/text-line-merge/text-line-merge.js",
+    styles: ["tools/text-line-merge/text-line-merge.css"],
     status: "ready",
     keywords: ["文本", "合并", "去换行", "前缀", "后缀", "预设"],
   },
@@ -53,6 +55,7 @@ export const TOOLS = [
       "格式化 Oracle / PostgreSQL 语句，带语法高亮、关键词搜索与选中文本全部高亮，并支持预设模板。",
     path: "tools/sql-format/index.html",
     entry: "tools/sql-format/sql-format.js",
+    styles: ["tools/sql-format/sql-format.css"],
     status: "ready",
     keywords: ["SQL", "格式化", "美化", "Oracle", "PostgreSQL", "高亮", "搜索"],
   },

@@ -19,6 +19,7 @@
     <link rel="stylesheet" href="./assets/css/base.css" />
     <link rel="stylesheet" href="./assets/css/shell.css" />
     <link rel="stylesheet" href="./assets/css/tool.css" />
+    <link rel="stylesheet" href="./assets/css/tabs.css" />
   </head>
 
   <body>
@@ -33,29 +34,80 @@
     <div id="shell-root"></div>
 
     <main class="workspace" id="workspace">
-      <section class="hero rise" style="--d: 0ms">
-        <div>
-          <p class="meta-label">本地工具集 · 零后端</p>
-          <h1 class="hero__title">全部在<em>本机</em>完成的工具集</h1>
-          <p class="hero__lead">
-            一个可长期扩展的工具集合：每个工具独立成页、互不干扰，参数可保存为预设以便复用。
+      <!-- 首页总览：未打开任何工具标签时显示（外壳会按需切换 data-view 与 hidden） -->
+      <div class="home-view" data-home-view>
+        <section class="hero rise" style="--d: 0ms">
+          <div>
+            <p class="meta-label">本地工具集 · 零后端</p>
+            <h1 class="hero__title">全部在<em>本机</em>完成的工具集</h1>
+            <p class="hero__lead">
+              一个可长期扩展的工具集合：点击左侧任意工具即可在本页打开标签页，多个工具可同时打开、
+              来回切换互不干扰；参数可保存为预设以便复用。
+            </p>
+          </div>
+        </section>
+
+        <div class="section-head rise" style="--d: 60ms">
+          <div>
+            <p class="meta-label">Tools</p>
+            <h2>工具总览</h2>
+          </div>
+          <p class="panel__hint">
+            已注册 <span data-tool-count class="mono">0</span> 个工具
           </p>
         </div>
-      </section>
 
-      <div class="section-head rise" style="--d: 60ms">
-        <div>
-          <p class="meta-label">Tools</p>
-          <h2>工具总览</h2>
-        </div>
-        <p class="panel__hint">
-          已注册 <span data-tool-count class="mono">0</span> 个工具
-        </p>
+        <ul class="tool-grid rise" style="--d: 120ms" data-tool-grid></ul>
+
+        <footer class="site-foot rise" style="--d: 180ms" data-site-footer></footer>
       </div>
 
-      <ul class="tool-grid rise" style="--d: 120ms" data-tool-grid></ul>
+      <!-- 标签工作台：打开任一工具后显示（docs/DESIGN.md §4.4） -->
+      <div class="tabs-workspace" data-tabs-workspace hidden>
+        <div class="workbench" data-workbench data-split="off">
+          <section class="pane" data-pane="primary" aria-label="主栏">
+            <div class="tabstrip">
+              <div
+                class="tabstrip__list"
+                role="tablist"
+                aria-label="主栏已打开的工具"
+                data-tablist
+              ></div>
+              <p class="tabstrip__hint meta-label" data-pane-hint>拖拽排序 · 拖到右侧并排</p>
+            </div>
+            <div class="pane__view" data-pane-view></div>
+          </section>
 
-      <footer class="site-foot rise" style="--d: 180ms" data-site-footer></footer>
+          <div class="workbench__divider" aria-hidden="true"></div>
+
+          <section class="pane" data-pane="secondary" aria-label="并排栏" hidden>
+            <div class="tabstrip">
+              <div
+                class="tabstrip__list"
+                role="tablist"
+                aria-label="并排栏已打开的工具"
+                data-tablist
+              ></div>
+              <button
+                class="icon-btn icon-btn--sm"
+                type="button"
+                data-action="collapse-split"
+                aria-label="退出并排显示"
+                title="退出并排显示"
+              ></button>
+            </div>
+            <div class="pane__view" data-pane-view></div>
+          </section>
+
+          <!-- 拖拽到此处即并排显示；仅在可并排时于拖拽过程中浮现 -->
+          <div class="dropzone dropzone--right" data-dropzone aria-hidden="true">
+            <span class="dropzone__icon" data-dropzone-icon aria-hidden="true"></span>
+            <span class="dropzone__text">拖到此处<br />并排显示</span>
+          </div>
+        </div>
+
+        <p class="tabs-toast" data-tabs-toast role="status" aria-live="polite" hidden></p>
+      </div>
     </main>
 
     <script type="module" src="./assets/js/shell.js"></script>

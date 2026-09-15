@@ -4,9 +4,22 @@
 > 后续任何功能调整都必须先比对本文档；若确需改变既定设计，**必须先更新本文档并写明变更理由**，再改动代码。
 > 提交信息的正文中请引用相关章节（例如 `refs docs/DESIGN.md §10.3`）。
 
-- 文档版本：1.1.0
-- 最近更新：2026-09-13
+- 文档版本：1.3.0
+- 最近更新：2026-09-15
 - 对应代码版本：v0.1.0
+
+> **v1.3.0 变更摘要（C 级 · 契约级）**：标签工作台由「一工具一标签」升级为「**实例化标签**」——同一工具可重复打开
+> 多个互相独立的实例（独立 DOM、独立 `init()`、独立配置键），重复打开时显示名自动追加「 (2)(3)」后缀且原标签不变，
+> 并支持双击/菜单/`F2` 内联重命名（允许重名）。受影响章节：§1.2 R6 措辞、§2.6 hash 语义、§4.4 实例模型与命名规则、
+> §5.2 标签组件基线、§6 重命名交互、§7 无障碍、§8.1 `toolbox:tabs` v2 与实例配置键、§9.3 `ctx.instance` 契约、
+> §10.8 / §13.9 存储 API 签名、§11.1 案例表、附录 B 常量。
+
+> **v1.2.0 变更摘要（C 级 · 契约级）**：新增「标签工作台」形态 —— 左侧工具列表由「整页跳转」改为「页内打开标签页」，
+> 支持切换、关闭、拖拽排序与拖到右侧双栏并排；标签面板常驻保活，从而消除「多工具并行必须多开网页、切换即丢数据」。
+> 理由：R5 禁止持久化任何用户输入，整页跳转必然销毁 DOM 与已粘贴内容，旧形态下「多工具并行」不可用。
+> 受影响章节：§0.2 / §1.2 R6 措辞 / §2.1 页面模型 / §2.2 分层 / §2.3 目录 / §2.5 加载时序 / §2.6（新增）/
+> §3.4 布局令牌 / §3.5 容器查询 / §4.2 内容区 / §4.4（新增）/ §5 与 §5.2（新增）/ §6 / §7 / §8.1 / §8.5 /
+> §9.1 / §9.3 / §10.6 / §10.7 / §11.1 / §13.1 / 附录 B。
 
 ---
 
@@ -31,6 +44,7 @@
 - [ ] 改动是否新增了 `localStorage` 键？是否遵循 §8.1 命名规范并已记入文档？
 - [ ] 新增的界面元素是否可在**明暗两套主题**下正常显示？
 - [ ] 是否满足 §7 无障碍要求（标签、键盘可达、`role="status"`）？
+- [ ] 标签工作台相关改动是否**只切换面板可见性**、没有重建面板或重复 `init()`？重建面板即丢失用户输入（违反 §4.4）。
 
 ---
 
@@ -51,7 +65,7 @@
 | **R3** | 零第三方资源 | 不引 CDN、不外链字体、不引图标库文件、不引 UI 框架、不引统计脚本 |
 | **R4** | 零构建 | 无打包、无编译、无转译；浏览器直接执行源码 |
 | **R5** | 输入数据不离开设备且不被持久化 | 用户粘贴的内容只存在于内存与当前 DOM，不写入任何存储 |
-| **R6** | 工具解耦 | 每个工具拥有独立页面与独立模块，互不共享状态、互不干扰 |
+| **R6** | 工具解耦 | 每个工具拥有独立**入场页面**与独立模块，互不共享状态、互不干扰。标签工作台（§4.4）只是同一模块的**另一个宿主**：一个标签对应一个**实例**（独立面板、独立 `init()` 调用、独立清理函数、独立配置键），**同一工具可以重复打开多个实例且实例之间不共享任何状态**；工具模块也不得保留模块级可变状态 |
 | **R7** | 参数化优先 | 任何功能行为都必须先成为**用户可配置的选项**；预设只能是一组参数取值，不得存在「预设专属逻辑分支」 |
 
 ### 1.3 核心设计原则
@@ -71,7 +85,7 @@
 
 | 层面 | 选型 | 备注 |
 | --- | --- | --- |
-| 页面 | 原生 HTML5 多页面 | 一工具一 HTML |
+| 页面 | 原生 HTML5 多页面 | 一工具一 HTML；首页 `index.html` 兼作**标签工作台宿主**（§4.4）。**不使用前端路由框架**，`hash` 仅作直链增强（§2.6） |
 | 样式 | 原生 CSS3 + CSS 自定义属性 | 不使用预处理器、不使用原子类框架 |
 | 脚本 | 原生 ES Module（ES2022+） | `<script type="module">` |
 | 图标 | 内联 SVG | 由 `assets/js/icons.js` 统一提供，禁止 emoji |
@@ -85,7 +99,8 @@
 ```
 展示层     工具页 HTML + 共享 CSS（tokens/base/shell/tool）+ 工具私有 CSS
    ↓
-外壳层     shell.js（渲染左列表与顶栏、收起态、动态挂载工具模块）
+外壳层     shell.js（渲染左列表与顶栏、收起态、首页总览、运行模式分派）
+           tabs.js（标签工作台：标签栏、面板保活、分栏、拖拽、hash 与布局持久化）
    ↓
 能力层     theme.js / theme-boot.js / icons.js / utils/{dom,clipboard,text}
    ↓
@@ -98,16 +113,16 @@
 
 ```
 /
-├── index.html                          入口页（工具总览）
+├── index.html                          入口页（首页总览 + 标签工作台宿主）
 ├── tools/<tool-id>/
-│   ├── index.html                      工具独立页面
+│   ├── index.html                      工具独立入口页（有脚本时重定向到标签工作台，无脚本时仍完整可读）
 │   ├── <tool-id>.js                    工具独立模块（仅导出 init）
 │   └── <tool-id>.css                   工具私有样式（可选，仅本工具使用）
 │   ▸ 现有工具：text-line-merge（《文本行合并》§10）、sql-format（《SQL 格式化》§13）
 ├── assets/
-│   ├── css/  tokens.css base.css shell.css tool.css
-│   ├── js/   registry.js shell.js theme.js theme-boot.js icons.js
-│   │         utils/{dom,clipboard,text}.js
+│   ├── css/  tokens.css base.css shell.css tool.css tabs.css
+│   ├── js/   registry.js shell.js tabs.js theme.js theme-boot.js icons.js
+│   │         tool-redirect.js  utils/{dom,clipboard,text}.js
 │   └── noscript.html
 ├── docs/DESIGN.md                      本文档
 ├── .gitignore  .nojekyll  package.json  README.md
@@ -130,9 +145,24 @@
 
 1. `<head>` 中**同步**加载 `theme-boot.js` → 在首屏绘制前写入 `data-theme` / `data-sidebar`，消除明暗闪烁。
 2. 浏览器解析到 `#shell-root` 与 `main#workspace`。
-3. `shell.js`（module，延迟执行）：
-   注入外壳（跳过链接 + 侧边栏 + 顶栏）→ 把 `main#workspace` 移入外壳 → 渲染列表/面包屑/首页卡片/页脚 → 绑定收起与主题按钮 → 若 `body[data-tool]` 存在则动态 `import()` 对应工具模块并调用 `init(ctx)`。
-4. 工具模块渲染自身界面到 `#tool-body`，并返回可选清理函数。
+3. `shell.js`（module，延迟执行）先注入外壳（跳过链接 + 侧边栏 + 顶栏）→ 把 `main#workspace` 移入外壳 → 渲染列表/面包屑/首页卡片/页脚 → 绑定收起与主题按钮；随后按运行模式分派：
+   - **标签工作台模式**（首页 `index.html`，无 `body[data-tool]`）：初始化 `tabs.js` → 读取布局（§8.1 `toolbox:tabs`）与 `hash` →
+     重建已保存的标签组合与分栏 → 惰性 `import()` 并 `init(ctx)`（**仅在标签首次激活时挂载**，挂载前按 `ToolRecord.styles`
+     注入该工具的私有 CSS，§9.2）→ 无标签时显示首页总览（§4.4）。
+   - **独立页模式**（`tools/<id>/index.html`，有 `body[data-tool]`）：保留旧行为，把 `main#workspace` 作为 `ctx.root` 挂载单个工具模块。
+     `assets/js/tool-redirect.js` 在脚本可用时把该页 `location.replace` 到 `index.html#/<id>` 使入口统一；脚本不可用时此页仍完整可读。
+4. 工具模块渲染自身界面到宿主节点（标签面板内为 `[data-tool-body]`，独立页内为 `#tool-body`），并返回可选清理函数。
+   标签模式下面板**常驻不销毁**：切换标签只改变可见性，绝不重建节点或重新 `init()`；只有关闭标签时才调用清理函数（§9.3）。
+
+### 2.6 标签工作台的地址与状态（v1.2.0 新增）
+
+- **布局来源**是 `localStorage` 的 `toolbox:tabs`（§8.1），承载实例集合（含显示名）、顺序、分栏与激活项。
+- **地址只编码「哪个工具」**：`index.html#/<tool-id>`，首页为无 hash。语义为「**激活该工具 `serial` 最小的实例；若该工具尚无实例则新建一个**」。
+  打开时按「实例 id 精确直链」（如 `#/i/<instance-id>`）**不提供**（YAGNI）：刷新后「看的是哪个实例」由布局恢复决定，避免
+  「URL 写工具级 hash、实际激活实例级」的自相矛盾。激活时用 `history.replaceState` 同步，
+  **不产生**额外的前进/后退历史项；`hashchange` 用于支持外部直链与浏览器前进后退。
+- **不引入前端路由框架**：无 History API 路由、无服务器重写规则，部署依然零配置（§14 → 见 README）。
+- **只恢复布局，不恢复输入**：任何用户输入都不得进入 URL 或存储（R5、§8.3）。
 
 ---
 
@@ -194,6 +224,7 @@
 - 阴影：`--shadow-1`（贴近）/ `--shadow-2`（浮起）/ `--shadow-3`（抽屉）；一律配合发丝描边使用，禁止厚重投影。
 - 动效：`--dur-fast 120ms` / `--dur-base 200ms` / `--dur-slow 320ms`，缓动 `--ease-out cubic-bezier(.22,.85,.24,1)`。
 - 纹理：`--grid-line` + `--grid-size 32px` 构成页面底纹，`background-attachment: fixed`。
+- 布局尺寸令牌：`--sidebar-w 264` `--sidebar-w-collapsed 64` `--topbar-h 56` `--tabstrip-h 40`（标签栏高度，§4.4）`--content-max 1280`（px）。
 
 ### 3.5 断点（写在媒体查询中，非令牌）
 
@@ -203,6 +234,12 @@
 | `≤ 1080px` | 双栏折叠为单列 |
 | `≤ 900px` | 侧边栏转为覆盖式抽屉（`html[data-drawer="open"]`），顶栏按钮变为菜单图标 |
 | `≤ 720px` | 收紧内边距、按钮撑满、工具条换行堆叠、字号下调 |
+
+**容器查询（标签工作台专用，v1.2.0 新增）**：标签面板的可用宽度取决于「栏宽」而非视口宽度，因此本节的
+`.panel-grid` / `.tool-head` 折行规则与 §13.1 的编辑器布局，在**原 `@media` 之外额外提供
+`@container pane (max-width: 1080px)` 变体**（查询容器为 `.pane__view`，声明 `container: pane / inline-size`，见 §4.4）。
+两者并存：独立页走媒体查询、标签工作台走容器查询；**无匹配容器时 `@container` 规则整体不生效**，
+因此旧浏览器只是退化为较宽布局，不会错乱。
 
 ### 3.6 图标规范
 
@@ -221,10 +258,14 @@
 - 侧边栏内容自上而下：品牌区（图标 + 站名）→ 工具列表（含 `.nav__label` 计数）。**不设隐私声明脚注**（见 §8.5）。
 - 顶栏高度 `--topbar-h 56px`，sticky；含收起按钮、面包屑、主题按钮。**不设隐私/本地计算徽标**（见 §8.5）。
 - 收起状态持久化于 `toolbox:sidebar`，取值 `expanded | collapsed`。
+- 侧栏与顶栏在**首页、标签工作台、工具独立页**三种情形下完全一致；标签工作台不向侧栏或顶栏新增元素，
+  收起按钮与主题按钮的位置不变（§8.5：外壳不承载隐私表述）。
 
 ### 4.2 内容区
 
 - `.workspace`：`max-width: --content-max 1280px`，左对齐（不居中），内边距 `--sp-8` ~ `--sp-12`；**工具页通过 `body[data-tool] .workspace` 把上内边距收紧为 `--sp-6`**，首页保持 `--sp-8`。
+- **标签工作台模式下 `.workspace` 改为「定高工作台」**（`body[data-mode="tabs"]`）：取消 `max-width` 与内边距，
+  高度为「视口高 − 顶栏高」且 `overflow: hidden`，**文档本身不再滚动**；首页总览与各标签面板分别在自己的滚动容器内滚动（§4.4）。
 - 首页区块顺序：主视觉（**单列**：眉标 + 主旨标题 + 一段功能定位语）→ 章节标题 → 工具卡片网格 → 页脚。
 - 工具页区块顺序：工具头部 → **预设工具条**（如有）→ 内联面板（另存为 / 导入 / 错误）→ 7:5 非对称双栏 → 页脚。
 - 工具页双栏内的分工（以《文本行合并》为基准形态）：
@@ -236,6 +277,74 @@
 
 - 工具卡片：图标 + 状态徽标 + 名称 + 说明 + `tool-id` 元信息 + 箭头；`status: planned` 时边框为虚线。
 - 列表项：图标 + 名称 + 状态徽标；当前项左侧 3px 强调色竖条 + 底色高亮 + `aria-current="page"`。
+- **列表项的当前项高亮在标签工作台模式下表示「当前聚焦栏的激活标签」**，关闭全部标签后回到首页（无高亮）。
+
+### 4.4 标签工作台（v1.2.0 新增；v1.3.0 升级为「实例化标签」）
+
+**目的**：消除「多工具并行必须多开网页、切换即丢数据」。做法是把每个工具挂载为页内**常驻面板**：
+点击左侧列表只切换或创建面板，不再整页导航，因此 DOM、输入内容、选区与滚动位置始终存活。
+
+**v1.3.0 升级点**：标签的身份从「工具」升级为「**工具实例**」——同一工具可重复打开多个**互相独立**的实例
+（例如同时开 3 个《SQL 格式化》处理不同脚本）。每个实例拥有独立面板、独立 `init(ctx)` 调用、独立清理函数与
+独立配置键（§9.3），运行期互不共享状态（R6）。
+
+**结构与尺寸**
+
+| 层 | 元素 | 说明 |
+| --- | --- | --- |
+| 视口 | `.workspace`（`body[data-mode="tabs"]`） | 定高 = 视口高 − `--topbar-h`；`overflow: hidden`；内部是「首页视图」或「标签工作台」二者之一 |
+| 首页视图 | `.home-view` | 内部滚动容器；**未打开任何标签时显示**（主视觉 → 章节标题 → 卡片网格 → 页脚） |
+| 工作台 | `.tabs-workspace` > `.workbench` | 分栏栅格：单栏 `minmax(0,1fr)`；并排 `minmax(0,1fr) 1px minmax(0,1fr)`（中缝为发丝分隔线） |
+| 栏 | `.pane` | flex 纵向：标签栏（高 `--tabstrip-h`）+ 面板视口；**每栏各有独立标签栏与独立滚动区** |
+| 标签栏 | `.tabstrip` > `.tabstrip__list` | `role="tablist"`；主栏右端为拖拽提示，并排栏右端为「退出并排」图标按钮 |
+| 面板视口 | `.pane__view` | `overflow-y: auto` 且 `container: pane / inline-size`：既是滚动容器，也是**容器查询的查询容器**（§3.5） |
+| 面板 | `.tabpanel` | 一个**实例**一个面板：`.tool-head` + `[data-tool-body]` + `[data-site-footer]`；非激活面板 `hidden`；以 `data-instance` 作实例索引、`data-tool` 保留工具身份（仅用于样式与调试） |
+| 投放区 | `.dropzone--right` | 仅拖拽过程中浮现，覆盖主栏右侧；拖入即并排显示 |
+| 轻提示 | `.tabs-toast` | `role="status"`；用于无法执行的动作与状态变更提示，约 4000ms 后清除 |
+
+**实例与命名规则（v1.3.0）**
+
+1. **实例身份**：`instanceId` 形如 `<tool-id>--<serial>`（如 `sql-format--2`），是标签与面板的唯一索引
+   （DOM `id` = `tab-<instanceId>` / `tabpanel-<instanceId>`，节点属性 `data-instance`）；`serial` 取
+   **当前未占用的最小正整数**（关闭即回收），从而保证实例配置键数量有界（§8.1）。
+2. **自动后缀**：新建实例的默认名 = `工具名`；若该名称已被**任一现有实例的显示名**占用，则依次尝试
+   `工具名 (2)`、`工具名 (3)`… 取最小可用名称。**原标签的名称与内容完全不变。**
+3. **手动重命名**：任意标签可改名，**允许重名**（完全由用户掌控，不拒绝、不自动改写用户输入）；名称 `trim` 后为空
+   视为取消并给出可读提示；长度上限 **40** 字符（与预设名一致）。
+4. **实例上限**：同时打开的实例数上限 `MAX_INSTANCES`（附录 B），超限时给出可读提示并拒绝新建，不产生空标签。
+
+**交互规则**
+
+1. **打开**：点击左侧工具项或首页工具卡片 = **每次新建一个实例**（不再有「已打开则只激活」的幂等行为），
+   在当前聚焦栏追加并激活；回到已有标签靠标签栏切换。当前聚焦栏（`focusedPane`）取「最近交互的栏」，初始为主栏。
+2. **切换**：点击标签、方向键、或点击面板内部，都会激活该栏的实例并把该栏设为聚焦栏。
+3. **关闭**：**两段式确认**（§6）——首次点击关闭按钮进入待确认态（3000ms 超时复位、`Esc` 撤销），再次点击才真正关闭；
+   关闭时调用**该实例**的清理函数并移除其面板。之后激活**右邻标签**，无右邻则激活左邻；该栏清空时：并排栏退出并排，
+   全部清空时回到首页总览。
+4. **重命名**：双击标签标题、标签「⋯」菜单里的「重命名」、右键菜单同项，或聚焦标签后按 `F2` → 标签内出现内联输入框；
+   输入时标签栏**实时显示新名称**，`Enter` / 失焦提交并落盘，`Esc` 取消还原。详见 §6 与 §7。
+5. **拖拽排序**：同栏内拖拽改变顺序；拖动过程中在目标位置显示 2px 强调色插入指示。
+6. **拖拽并排**：把标签拖到画面右侧投放区即移入并排栏并激活；把并排栏的标签拖回主栏标签栏即合并。
+   **并排栏清空后自动退回单栏**；标签总数不足 2 个时不做并排，给出可读提示。
+7. **上限为两栏**（主栏 + 并排栏）；`≤ 900px` 不提供并排，已恢复的并排布局转为**上下堆叠**（`grid-template-rows: 1fr 1fr`），不丢内容。
+8. **键盘等价路径**（拖拽之外必须可用）：标签内「⋯」按钮打开标签菜单（同时支持右键与 `Shift+F10` / 菜单键），
+   提供「重命名」「在右侧并排显示 / 移回主栏」「关闭该标签」；详见 §7。菜单与提示文案统一用「标签」而非「工具」，
+   因为同一工具可能同时存在多个实例。
+9. **轻提示**：无法执行的动作（只剩一个标签仍要并排、达到实例上限、点击 `planned` 工具）与状态变更用
+   `role="status"` 轻提示行告知。
+10. **面包屑**：标签模式下顶栏面包屑为「工具集 / <**当前激活实例的显示名**>」（如「文本行合并 (2)」），
+    且「工具集」**不再是链接**（避免一次无意义的整页刷新，因为首页总览在打开工具后本就不可见，§4.2）；
+    工具独立页保持链接形态。侧栏高亮仍按**工具**判定：该工具存在激活实例即高亮。
+
+**保活与重测量（关键实现约定）**
+
+- 面板一旦挂载**绝不重建**：切换标签只改 `hidden` 与 ARIA 属性。这是 R5 下「切换不丢数据」的唯一可行解，
+  也是本节的强制要求（重建面板视为缺陷）。**重命名标签同样不得重建标签或面板节点**（只改文本与 ARIA）。
+- 工具模块**惰性挂载**：实例首次激活时才 `import()` 并调用其 `init(ctx)`；关闭该实例时只调用**它自己**的清理函数（§9.3）。
+  同一工具的多个实例各持有一份独立 `init()` 结果，互不共享状态（R6）；工具模块**不得**保留模块级可变状态。
+- 隐藏期间布局测量不可用，因此外壳在「面板首次可见 / 分栏变化 / 侧栏收起展开 / 窗口 resize」后，
+  于 `requestAnimationFrame` 派发一次 `window` `resize` 事件作为**统一重测量信号**（并在侧栏宽度过渡结束后补发一次）；
+  工具可据此重算依赖可见尺寸的量（§9.3）。
 
 ---
 
@@ -258,6 +367,12 @@
 | 输出区 | `.output` | 等宽、`pre-wrap`、`break-word`、可选中 |
 | 统计 | `.stats` `.stat__value` `.stat__label` | 值为等宽大号，标签为 `.meta-label` 风格 |
 | 元信息 | `.meta-label` `.mono` `.rule` | — |
+| 标签栏 | `.tabstrip` `.tabstrip__list` `.tab` `.tab__main` `.tab__name` `.tab__close` `.tab__menu` `.tabstrip__meta` | 基线见 §5.2 |
+| 标签面板 | `.tabpanel` | 面板容器；内部复用 `.tool-head`，工具版式不变（§9.3） |
+| 投放区 | `.dropzone` `.dropzone--right` | 拖拽中才浮现；虚线描边 + 强调色浅底 |
+| 插入指示 | `.tabstrip__marker` | 2px 强调色竖条；拖拽排序时定位插入点 |
+| 轻提示 | `.tabs-toast` | `role="status"`；语义色竖条 + 表面色底 |
+| 标签菜单 | `.tabmenu` `.tabmenu__item` | `role="menu"` / `role="menuitem"`（§5.2） |
 
 **状态约定**：禁用态一律使用**虚线描边 + 内嵌底色**，而不是把文字降到不可读；聚焦态为 2px 强调色外描边。
 
@@ -285,6 +400,28 @@
 3. **工具页内容区上内边距比首页更紧凑**：`body[data-tool] .workspace { padding-top: var(--sp-6) }`。该规则以**选择器作用域**生效，因此首页 `.hero` 的主视觉留白不受影响；新增工具页因 §9.1 的 `body[data-tool]` 契约天然继承，无需额外处理。
 4. **间距节奏原则**：跨组件留白取 `--sp-3` / `--sp-4`，组件内部取 `--sp-1` / `--sp-2`。刻意制造节奏差，避免相邻多处使用 `--sp-6`（24px）形成「成片等距空白」——那是页面显得松散的主因。
 
+### 5.2 标签组件基线（v1.2.0 新增）
+
+全部取值取自令牌；明暗两套主题下均需正常显示，且信息不得只靠颜色传达。
+
+| 属性 | 取值 | 令牌 |
+| --- | --- | --- |
+| `.tabstrip` 高度 | 40px | `--tabstrip-h` |
+| `.tabstrip` 内边距 / 元素间隔 | 8px / 4px | `--sp-2` / `--sp-1` |
+| `.tabstrip` 底色 / 分割线 | 内嵌色 + 底部 1px 发丝 | `--bg-inset` / `--hairline` |
+| `.tab` 高度 | 30px（栏内上下各留 5px） | — |
+| `.tab` 内边距 / 圆角 | 12px / 5px | `--sp-3` / `--r-sm` |
+| `.tab` 文字 | 13px / 500 字重 | `--fs-sm` / `--fw-medium` |
+| `.tab.is-active` | 表面色 + 发丝描边 + 底部 2px 强调色指示（`inset` 阴影，不改变高度）；**v1.3.0 追加左侧 2px 强调色竖条**以提高活动态辨识度（明暗双主题均需核对） | `--bg-surface` `--hairline` `--accent` |
+| `.tab`（非激活） | 文字降一级，悬停用悬停底色 | `--text-muted` / `--bg-hover` |
+| `.tab__close` / `.tab__menu` | 20×20 图标按钮，`aria-label` + `title` 必填 | `--r-xs` |
+| `.tab__rename`（内联重命名输入框，v1.3.0） | 高度随 30px 标签、字号 13px、宽度自适应但受 `max-width: 22ch` 约束（避免标签栏跳动）、聚焦 2px 强调色描边 | `--fs-sm` / `--accent` / `--r-xs` |
+| 关闭待确认 | 关闭按钮变为「确认关闭」文字，危险色 + 危险浅底 | `--danger` / `--danger-soft` |
+| 拖拽中的源标签 | 降至 40% 不透明度 | — |
+| `.tabpanel` 内边距 | 上 24px、左右 16~32px（随栏宽）、下 64px | `--sp-6` / `--sp-4`~`--sp-8` / `--sp-16` |
+| `.dropzone--right` | 宽 `min(28%, 240px)`；虚线描边 + 强调色浅底 | `--hairline-strong` / `--accent-soft` |
+| `.tabmenu` | 表面色 + 发丝描边 + 浮起阴影；项高 32px | `--bg-surface` / `--shadow-2` |
+
 ---
 
 ## 6. 交互与动效规范
@@ -301,6 +438,16 @@
 | 手动合并的定位 | 手动触发主操作（主按钮 / `Ctrl/Cmd + Enter`）且结果非空时，若**输出面板底部**（含「复制结果」）超出视口，则平滑滚动使其进入视口（底部留 24px 余量）；**已完整可见时不得滚动**（避免无谓跳动）；`prefers-reduced-motion: reduce` 下改为瞬时定位 |
 | 动效 | 仅用透明度与位移，时长 120~320ms；`prefers-reduced-motion: reduce` 下全部退化为无动画 |
 | 悬停 | 卡片/列表项位移不超过 3px；不做夸张缩放 |
+| 标签关闭确认 | **两段式**：首次点击进入待确认态（关闭按钮变为危险色「确认关闭」），**3000ms** 超时复位，`Esc` 撤销；再次点击才执行关闭（与「删除预设」一致） |
+| 标签拖拽 | 原生 HTML5 拖放（零依赖）；`dragover` 阶段只移动插入指示元素，`dragend` / `Esc` 必须清理投放区与全部状态类 |
+| 面板保活 | 切换标签**只改可见性**，禁止重建面板或重复 `init()`；仅关闭标签时才执行工具清理函数（§4.4） |
+| 激活重测量 | 面板首次可见 / 分栏变化 / 侧栏开合 / 窗口 resize 后，于 `requestAnimationFrame` 派发一次 `window` `resize` 作为统一重测量信号（§4.4、§9.3） |
+| 快捷键归属 | 工具注册在 `document` 上的快捷键，仅在**焦点位于该工具面板内**时响应，避免并排时一次按键触发多个工具（§9.3） |
+| 轻提示 | 无法执行的动作与状态变更使用 `role="status"` 轻提示行，约 **4000ms** 后清除（与本节「离散反馈」一致） |
+| 标签重命名（v1.3.0） | 双击标题 / 菜单「重命名」/ 右键同项 / `F2` 进入内联编辑；输入时**实时更新标签显示**，`Enter` 或失焦提交并落盘，`Esc` 取消还原；空名视为取消并播报；**编辑态 `Esc` 必须 `stopPropagation`**（不得触发全局「撤销关闭待确认」或工具的内联面板关闭）；编辑期间该标签临时 `draggable="false"` |
+| 重命名不重建 | 重命名只改标签文本、`title` 与 `aria-label`，**禁止**重建标签或面板节点（§4.4） |
+| 实例上限 | 达到 `MAX_INSTANCES`（附录 B）时给出可读提示并拒绝新建，不产生空标签 |
+| 文案口径（v1.3.0） | 标签菜单、轻提示与 `aria-label` 一律用「标签」而非「工具」（同一工具可能存在多个实例）；侧栏与首页仍按「工具」表述 |
 
 ---
 
@@ -313,6 +460,12 @@
 - 焦点可见：`:focus-visible` 使用 2px 强调色外描边，不得移除。
 - 色彩对比度满足 WCAG AA；信息不得只靠颜色传达（状态同时有文字或形状差异）。
 - 全流程可仅用键盘完成。
+- **标签栏语义**：使用 `role="tablist"`；每个标签为 `role="tab"`（`aria-selected`、`aria-controls` 指向面板，`id` 与面板 `aria-labelledby` 互指）；采用 **roving tabindex**（激活项 `tabindex="0"`，其余 `-1`）。
+- **标签栏键盘**：`←` / `→` 切换标签（选择随焦点移动）、`Home` / `End` 跳到首/末、`F2` 重命名当前标签、`Delete` / `Backspace` 两段式关闭、`Esc` 撤销待确认态（或取消重命名编辑）。
+- **拖拽必须有键盘等价路径**：「⋯」标签菜单（可点击、可右键、可 `Shift+F10` / 菜单键唤起）提供「重命名」「在右侧并排显示 / 移回主栏」「关闭该标签」；菜单遵循 `role="menu"` + 方向键 + `Enter` + `Esc` 归还焦点到触发按钮。
+- **重命名编辑态（v1.3.0）**：编辑期间 `.tab__main` 置 `hidden`、由 `<input class="tab__rename">` 承担焦点（不得在 `role="tab"` 内嵌套可聚焦元素，故两者为**兄弟关系**，由 `.tab`（`role="presentation"`）承载）；输入框带 `aria-label="重命名标签：<当前名>"`；提交后焦点归还 `.tab__main`；进入编辑、提交、取消、拒绝空名均通过 `role="status"` 播报；标签的 `aria-selected` 在编辑期间保持不变。
+- **标签的关闭与菜单必须是真实 `<button>`** 并同时具备 `aria-label` 与 `title`；标签容器使用 `role="presentation"`，不得用 `div` 冒充按钮。
+- 轻提示、关闭确认态与并排状态变化必须通过 `role="status"` / `aria-live="polite"` 播报。
 
 ---
 
@@ -335,6 +488,20 @@ toolbox:<全局键>              跨工具/外壳数据
 | `toolbox:text-line-merge:config` | 工具 | 上次参数与预设选择 | `{ config, presetId }` |
 | `toolbox:sql-format:presets` | 工具 | 《SQL 格式化》自定义预设数组 | `[{ id, name, config, createdAt }]` |
 | `toolbox:sql-format:config` | 工具 | 《SQL 格式化》上次参数与预设选择 | `{ config, presetId }` |
+| `toolbox:tabs` | 外壳 | 标签工作台布局与实例名（**仅实例 id / 工具 id / 显示名 / 顺序 / 分栏 / 激活项，绝不含任何输入内容**） | `{ version: 2, instances: [{ id, tool, name, renamed }], panes: { primary: string[], secondary: string[] }, active: { primary: string, secondary: string }, focused: 'primary' \| 'secondary' }` |
+| `toolbox:<tool-id>:config:<serial>` | 工具 | **同一工具第 2 个及以后实例**的上次参数与预设选择（模式化键；`serial >= 2`，见下） | `{ config, presetId }` |
+
+> `toolbox:tabs` 只允许记录「布局与名称」，任何工具输入（粘贴文本、SQL 正文等）都不得写入其中（R5、§8.3）。
+> 读取时必须逐项校验：过滤未注册 / `status !== 'ready'` / 缺少 `entry` 的实例、重复实例 id 去重、栏数收敛为 2、
+> 主栏非空、激活项必须存在，非法值静默丢弃；**v1 结构（`panes` 内为工具 id 字符串）必须自动迁移为 v2 实例结构**，
+> 迁移只增不改，且不删除任何旧键。
+
+> **实例级配置键（v1.3.0）**：同一工具的多个实例必须各自记住参数与预设选择，故按实例分区分键：
+> `serial === 1` 沿用 `toolbox:<tool-id>:config`（**零迁移零回归**：该工具的首个实例与工具独立页共用同一键），
+> `serial >= 2` 用 `toolbox:<tool-id>:config:<serial>`；`toolbox:<tool-id>:presets`（自定义预设列表）**跨实例共享**，不分区
+> ——预设是「我的预设」，共享才符合直觉。
+> **关闭实例不删除实例键**：`serial` 会被回收复用，因此键数量有界（≤ `MAX_INSTANCES`），并天然保留「参数记忆」；
+> 这是预期行为，不是脏数据。
 
 ### 8.2 数据边界（必须在界面上如实告知用户）
 
@@ -365,6 +532,7 @@ toolbox:<全局键>              跨工具/外壳数据
 3. **共享外壳（侧边栏、顶栏、页脚）一律不重复声明**：侧边栏只放品牌与工具列表，顶栏只放操作控件，页脚只放版本信息。
 4. **首页仅在 H1 主旨标题中体现定位**（「全部在*本机*完成的工具集」）；hero 的补充文案只讲功能（独立成页、参数可保存为预设），不复述隐私主张。
 5. **例外**：`assets/noscript.html` 是 JS 被禁用时的唯一说明页，其正文即为此说明，不受本约定限制。
+6. **标签栏、标签菜单、投放区、轻提示一律不承载隐私表述**（同第 3 条）：它们属于共享外壳，只承担导航与状态反馈。
 
 **新增工具时**：不要在工具头部或工具条里再写一遍隐私声明；如需就地提示，复用结果面板的既有位置与措辞。
 
@@ -379,6 +547,8 @@ toolbox:<全局键>              跨工具/外壳数据
    - `<div id="shell-root"></div>`
    - `<main class="workspace" id="workspace">`（内含 `<header class="tool-head">`、`<div id="tool-body">`、`<footer data-site-footer>`）
    - `<head>` 中同步加载 `../../assets/js/theme-boot.js`（必须在样式表之前）
+   - `<head>` 中加载 `../../assets/js/tool-redirect.js`：脚本可用时把入口统一到 `index.html#/<tool-id>`；
+     脚本不可用时本页仍完整可读（这是无脚本兜底入口，不得删除或改成 `meta refresh`）
    - 结尾加载 `../../assets/js/shell.js`（`type="module"`）
 2. **写处理模块**：`tools/<tool-id>/<tool-id>.js`，导出 `init(ctx)`，可选导出 `meta` 与清理函数。
 3. **注册**：在 `assets/js/registry.js` 的 `TOOLS` 中追加一条 `ToolRecord`。**这是唯一需要改动的共享文件。**
@@ -393,6 +563,7 @@ toolbox:<全局键>              跨工具/外壳数据
 | `description` | `string` | 一句话说明（用于首页卡片） |
 | `path` | `string` | 页面路径，**站点根相对** |
 | `entry` | `string` | 模块路径，**站点根相对** |
+| `styles` | `string[]` | 可选，工具私有样式路径（**站点根相对**，按数组顺序生效）。标签工作台按此注入；工具独立页在 `<head>` 中自行链接。有私有 CSS 的工具**必须同时登记**（v1.2.0） |
 | `status` | `'ready' \| 'planned'` | `planned` 显示「开发中」角标与虚线卡片 |
 | `keywords` | `string[]` | 可选，预留检索 |
 
@@ -400,8 +571,11 @@ toolbox:<全局键>              跨工具/外壳数据
 
 ```js
 export function init(ctx) {
-  // ctx.root      HTMLElement          工具页内容区（main.workspace）
+  // ctx.root      HTMLElement          工具内容区（标签面板容器；独立页为 main.workspace）
   // ctx.tool      object               registry 中的 ToolRecord
+  // ctx.instance  object               标签实例信息（v1.3.0）：
+  //               { id, toolId, serial, name, renamed }
+  //               独立页模式下等价于 { id: toolId, toolId, serial: 1, name: tool.name, renamed: false }
   // ctx.site      object               SITE 元信息
   // ctx.utils     { dom, clipboard, text }  公共能力，必须复用
   // ctx.icons     { icon(name, size) }
@@ -417,6 +591,45 @@ export function init(ctx) {
 - 返回清理函数时必须清除**全部**定时器与事件监听（`dom.on` 已返回解绑函数）。
 - 模块内部推荐三层：**纯函数核心 → 存储适配层 → UI 编排层**；核心算法必须可脱离 DOM 直接导入验证。
 - 动态 `import()` 失败由外壳兜底渲染可读错误；工具自身的关键失败也应给出可读提示，不静默。
+
+**标签工作台下的增量约定（v1.2.0，新增工具与改造既有工具都必须满足）**
+
+1. **宿主解析**：优先取 `ctx.root` 内的 `[data-tool-body]`，回退 `#tool-body`。标签面板与独立页共用同一模块，
+   `ctx.root` 在标签模式下是面板容器，因此**不得**依赖 `document` 级唯一 `id`：
+
+   ```js
+   const host = root.querySelector("[data-tool-body]") || root.querySelector("#tool-body");
+   ```
+
+2. **快捷键焦点归属**：注册在 `document` 上的快捷键（`Ctrl/Cmd + Enter`、`Ctrl/Cmd + F`、`Esc` 等）必须保证
+   「焦点在本工具面板内才响应」，否则并排/多标签时一次按键会同时触发多个工具：
+
+   ```js
+   const inTabs = Boolean(root.closest("[data-tabs-workspace]"));
+   if (inTabs && !root.contains(event.target)) return;
+   ```
+
+3. **重测量信号**：外壳在「面板首次可见 / 分栏变化 / 侧栏开合 / 窗口 resize」后会派发 `window` `resize`。
+   依赖可见尺寸的测量（滚动条宽度补偿、行号槽对齐等）应挂在该事件上，**不得**缓存隐藏状态下测得的值。
+4. **滚动定位**：需要滚动到某处时，必须解析**最近的可滚动祖先容器**（标签面板内为 `.pane__view`），
+   独立页回退文档滚动；不得直接假定 `window` 是滚动容器。
+5. **面板保活前提**：工具模块必须继续返回清理函数，且清理时注销全部监听与定时器；外壳只在关闭标签时调用它，切换标签不调用。
+6. **私有样式**：工具的私有 CSS 必须同时（a）在工具独立页 `<head>` 中链接、（b）登记到 `ToolRecord.styles`。
+   标签工作台按 `styles` 注入，工具独立页中同址样式已存在会自动跳过。
+   **不得**在 JS 里手写 `<link>`，也不得 `import "./x.css"`（后者需构建支持，违反 R4）。
+7. **实例信息与实例级配置键（v1.3.0）**：同一工具可被挂载为多个实例，工具必须以 `ctx.instance` 决定自己的配置存储键，
+   **不得**把实例信息存进模块级变量（那会让多个实例互相覆盖）：
+
+   ```js
+   // serial <= 1 沿用既有键（零迁移：工具独立页与该工具的首个实例共用）；serial >= 2 用实例键
+   function instanceSessionKey(instance, prefix) {
+     return instance && instance.serial > 1 ? `${prefix}:config:${instance.serial}` : `${prefix}:config`;
+   }
+   ```
+
+   `presets` 键（自定义预设列表）**不按实例分区**，保持跨实例共享。键规范见 §8.1。
+8. **实例之间不得互相干扰**：禁止模块级可变状态（`let` / 可变容器）；禁止假设「页面里只有一个自己」
+   （面板内一律以 `ctx.root` 为选择器作用域）；标签显示名变化（重命名）**不得**触发工具重新初始化。
 
 ### 9.4 能力复用清单（禁止重复实现）
 
@@ -434,6 +647,11 @@ export function init(ctx) {
 - **禁止**向 `assets/css/tool.css` 添加只服务于单个工具的样式。
 - 工具专属样式写入 `tools/<tool-id>/<tool-id>.css`，并在该工具页 `<head>` 中链接。
 - 只有当某样式**确实**会被第二个工具复用时，才允许上移到共享样式文件（并由改动者同时更新本节）。
+- **v1.2.0**：标签工作台内工具样式由外壳按 `ToolRecord.styles` 注入（§9.2、§9.3 第 6 条），
+  因此注册表的 `styles` 与工具页 `<head>` 的 `<link>` **必须同时维护**；只登记其一视为缺陷。
+- **v1.2.0**：工具私有样式中的选择器必须带工具前缀（`.tlm-*` / `.sf-*`），**不得**出现通用选择器
+  （唯一例外是 `[hidden] { display: none !important }` 兜底，因为 `.notice` 等组件自带 `display: flex`
+  会覆盖浏览器默认行为）。标签工作台会在同一页面同时加载多个工具的样式，通用选择器会造成跨工具干扰（违反 R6）。
 
 ---
 
@@ -520,6 +738,7 @@ export function init(ctx) {
 - **输出面板**（左列，输入面板正下方）：空输入显示空状态，有结果显示单行文本；底部为「复制结果」（成功后按钮变勾号 +「已复制」并转绿 1500ms）与「下载为 .txt」（本地 Blob）。
 - **统计**：输入行数 / 参与合并行数 / 输出字符数（`countChars` 按码点）。
 - **合并后的自动滚动**：手动触发合并（主按钮或 `Ctrl/Cmd+Enter`）且结果非空时，把**输出面板底部（含「复制结果」按钮）**滚动进视口，便于立刻复制；结果为空时仅给出提示、不滚动；目标已完整可见时不滚动。
+  （**v1.2.0**：定位基准改为「**最近的可滚动祖先容器**」——标签面板内为 `.pane__view`，独立页回退文档滚动，见 §9.3 第 4 条。）
 
 ### 10.7 边界行为（必须保持）
 
@@ -537,6 +756,7 @@ export function init(ctx) {
 | 复制时防抖未结算 | 先结算再复制（不得复制到旧结果） |
 | 剪贴板不可用 | 提示「复制失败，请手动选择结果文本复制。」 |
 | `localStorage` 不可用 | 提示仅在当前页面内有效，功能不中断 |
+| 面板处于隐藏状态（标签未激活） | 不响应快捷键、不做滚动定位；重新可见后由外壳的重测量信号恢复布局（§4.4） |
 
 ### 10.8 纯函数 API（可导出、可脱离 DOM 验证）
 
@@ -551,7 +771,8 @@ export function mergeLines(lines, config);       // 合并为单行字符串（�
 export function serializePresets(presets, cfg);  // 生成导出对象
 export function parseImportPayload(raw);         // { presets, stats } 或抛可读错误
 export function loadCustomPresets() / saveCustomPresets(list);
-export function loadSession() / saveSession(config, presetId);
+export function loadSession(storageKey?) / saveSession(config, presetId, storageKey?); // 省略 storageKey 时用默认键（独立页与该工具的首个实例）
+export function instanceSessionKey(instance);  // 由 ctx.instance 推导实例级配置键（serial <= 1 用默认键，见 §8.1）
 ```
 
 ---
@@ -571,6 +792,12 @@ export function loadSession() / saveSession(config, presetId);
 | 引入一个 UI 库 / 图标库 | **D** | 违反 R3/R4，必须先取得明确同意 |
 | 加一个「云端同步预设」 | **D** | 违反 R1/R2/R5，必须先取得明确同意 |
 | 把用户输入缓存到本地以便恢复 | **D** | 违反 R5，必须先取得明确同意 |
+| 把标签组合与分栏布局写进 `localStorage` | **B** | 只写布局（id / 顺序 / 分栏 / 激活），**绝不写入任何输入内容**（R5）；键 `toolbox:tabs` 已在 §8.1 登记 |
+| 让工具在标签页内常驻、切换不重建 | **B** | 属外壳能力：先在 §4.4 / §9.3 定义面板保活与重测量契约，再改 `tabs.js`；**重建面板 = 丢数据** |
+| 用 URL 分享完整分栏布局 / 引入前端路由框架 | **D** | 需服务器重写规则或构建产物，违反 R1/R4，必须先取得明确同意（当前 `hash` 只编码工具，见 §2.6） |
+| 让同一工具能开多个标签（实例） | **C** | 改变标签身份与存储键：先在 §4.4 / §8.1 / §9.3 定义实例模型与实例配置键，再改 `tabs.js` / `shell.js` 与工具模块 |
+| 给标签加自动数字后缀 / 手动重命名 | **B** | 先在 §4.4「实例与命名规则」定义规则（后缀取最小可用、重命名自由且允许重名、上限 40 字符），再改 `tabs.js`；不得用 `window.prompt`（§6） |
+| 把标签显示名写进 `toolbox:tabs` | **B** | 只允许写「名称」这类配置，**绝不写入任何用户输入**（R5）；键已在 §8.1 登记 |
 
 ### 11.2 提交纪律
 
@@ -608,6 +835,8 @@ export function loadSession() / saveSession(config, presetId);
 理由：代码可读性依赖行宽与行号槽，7:5 会把编辑器压到无法完整展示格式化后的语句；
 而格式化选项虽多，均为短控件，320px 窄列即可容纳。`≤1080px` 时折为上下单列
 （编辑器在上、选项在下）。
+（**v1.2.0**：该折行在标签并排时按**栏宽**判定——除原 `@media (max-width: 1080px)` 外，
+另有 `@container pane (max-width: 1080px)` 变体生效，见 §3.5 与 §4.4。）
 
 全页隐私表述只出现一次，位于编辑器面板脚注（「零网络请求 · 零数据上传」），遵循 §8.5。
 
@@ -767,7 +996,8 @@ export function formatSql(sql, config);             // → 格式化后的 SQL
 export function serializePresets(presets, cfg);
 export function parseImportPayload(raw);
 export function loadCustomPresets() / saveCustomPresets(list);
-export function loadSession() / saveSession(config, presetId);
+export function loadSession(storageKey?) / saveSession(config, presetId, storageKey?); // 省略 storageKey 时用默认键（独立页与该工具的首个实例）
+export function instanceSessionKey(instance);  // 由 ctx.instance 推导实例级配置键（serial <= 1 用默认键，见 §8.1）
 ```
 
 ### 13.10 存储键
@@ -815,6 +1045,14 @@ export function loadSession() / saveSession(config, presetId);
 | | `EXPORT_VERSION` | 1 |
 | `shell.js` | `SIDEBAR_KEY` | `toolbox:sidebar` |
 | | `NARROW_MEDIA` | `(max-width: 900px)` |
+| `tabs.js` | `TABS_KEY` | `toolbox:tabs` |
+| | `TABS_MAX_PANES` | 2 |
+| | `TABS_HASH_PREFIX` | `#/`（只编码激活工具的 id，见 §2.6） |
+| | `CLOSE_CONFIRM_MS` | 3000（标签两段式关闭） |
+| | `TOAST_MS` | 4000 |
+| | `LAYOUT_SIGNAL_DELAY` | 240（侧栏宽度过渡 200ms 之后的补测量） |
+| | `MAX_INSTANCES` | 8（同时打开的标签实例数上限） |
+| | `MAX_NAME_LENGTH` | 40（标签显示名长度上限，与预设名一致） |
 | `theme.js` | `THEME_KEY` | `toolbox:theme` |
 | `sql-format.js` | `DEBOUNCE_MS` | 0（高亮走 rAF 合并，见 §13.6） |
 | | `FEEDBACK_MS` | 2000（状态行实际清除 = ×2 = 4000ms） |

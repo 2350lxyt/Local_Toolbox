@@ -1,0 +1,479 @@
+/* ==========================================================================
+   标签工作台（docs/DESIGN.md §4.4 / §5.2）
+   仅服务于入口页 index.html：标签栏、标签面板、分栏、投放区、标签菜单、轻提示。
+   所有取值来自 tokens.css（禁止硬编码色值/字号/间距），明暗双主题共用同一套规则。
+   ========================================================================== */
+
+/* --------------------------------------------------------------- 兜底 */
+
+/* `hidden` 必须始终生效。
+   工具内的 `.notice` 等组件自带 `display: flex`，会覆盖浏览器默认的 `[hidden]{display:none}`
+   （各工具私有样式里也有同样的兜底）；标签模式下还要靠它隐藏非激活面板，故在此统一声明一次，
+   避免任何工具样式遗漏兜底时面板「藏不住」或错误提示误显示。 */
+[hidden] {
+  display: none !important;
+}
+
+/* ---------------------------------------------- 定高工作台（标签模式） */
+
+/* 标签模式下整个应用是「定高工作台」：文档不滚动，滚动交给各栏的面板视口 */
+body[data-mode="tabs"] .shell__main {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body[data-mode="tabs"] .workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 首页视图：沿用首页原有的 1280 上限与内边距，滚动发生在这里 */
+body[data-mode="tabs"] .workspace[data-view="home"] {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 标签视图：撑满可用宽度，取消内边距，滚动交给每一栏 */
+body[data-mode="tabs"] .workspace[data-view="tabs"] {
+  max-width: none;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------ 工作台 */
+
+.tabs-workspace {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tabs-workspace[hidden] {
+  display: none;
+}
+
+.workbench {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* 并排：主栏 | 发丝分隔 | 并排栏 */
+.workbench[data-split="on"] {
+  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+}
+
+.workbench__divider {
+  display: none;
+  background: var(--hairline);
+}
+
+.workbench[data-split="on"] .workbench__divider {
+  display: block;
+}
+
+/* --------------------------------------------------------------- 栏 */
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pane[hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------------------ 标签栏 */
+
+.tabstrip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--tabstrip-h);
+  padding: 0 var(--sp-2);
+  background: var(--bg-inset);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.tabstrip__list {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* 标签条横向滚动但不出现滚动条，避免吃掉 40px 栏高 */
+  scrollbar-width: none;
+}
+
+.tabstrip__list::-webkit-scrollbar {
+  height: 0;
+}
+
+.tabstrip__hint {
+  flex: 0 0 auto;
+  padding-right: var(--sp-1);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+/* 拖拽排序时的插入位置指示 */
+.tabstrip__marker {
+  flex: 0 0 auto;
+  width: 2px;
+  height: 20px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+}
+
+/* --------------------------------------------------------------- 标签 */
+
+.tab {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 30px;
+  padding-right: 2px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  transition: background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+
+.tab:hover {
+  color: var(--text-body);
+  background: var(--bg-hover);
+}
+
+.tab.is-active {
+  color: var(--text-strong);
+  background: var(--bg-surface);
+  border-color: var(--hairline);
+  box-shadow: inset 0 -2px 0 var(--accent), var(--shadow-1);
+}
+
+/* 活动态强化（v1.3.0）：左侧 2px 强调竖条，明暗主题下都更易辨识 */
+.tab.is-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 2px;
+  height: 16px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+  transform: translateY(-50%);
+}
+
+.tab.is-active .tab__icon {
+  color: var(--accent);
+}
+
+.tab.is-dragging {
+  opacity: 0.4;
+}
+
+.tab__main {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 100%;
+  max-width: 22ch;
+  padding: 0 var(--sp-1) 0 var(--sp-3);
+  color: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  background: none;
+  border: 0;
+  border-radius: inherit;
+  white-space: nowrap;
+}
+
+.tab__icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: currentColor;
+}
+
+.tab__icon .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.tab__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 内联重命名输入框（v1.3.0）：与 .tab__main 占同一位置，宽度随输入自适应但受上限约束，
+   避免标签栏在输入过程中跳动（docs/DESIGN.md §5.2 / §6） */
+.tab__rename {
+  flex: 0 0 auto;
+  height: 22px;
+  max-width: 22ch;
+  padding: 0 var(--sp-2);
+  color: var(--text-strong);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  background: var(--bg-surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-xs);
+  box-shadow: 0 0 0 2px var(--accent-ring);
+}
+
+.tab__rename[hidden] {
+  display: none;
+}
+
+.tab__close,
+.tab__menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 4px;
+  width: 20px;
+  height: 20px;
+  color: var(--text-faint);
+  border-radius: var(--r-xs);
+  transition: color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+
+.tab__close:hover,
+.tab__menu:hover {
+  color: var(--text-strong);
+  background: var(--bg-hover);
+}
+
+.tab__close .icon,
+.tab__menu .icon {
+  width: 13px;
+  height: 13px;
+}
+
+/* 两段式关闭的待确认态（§6） */
+.tab__close.is-armed {
+  width: auto;
+  padding: 0 var(--sp-2);
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.tab__close-label {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------- 面板视口 */
+
+/* 既是滚动容器，也是容器查询的查询容器（§3.5）：面板内布局按「栏宽」判定 */
+.pane__view {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  container: pane / inline-size;
+}
+
+/* --------------------------------------------------------------- 面板 */
+
+.tabpanel {
+  padding: var(--sp-6) clamp(var(--sp-4), 2.5vw, var(--sp-8)) var(--sp-16);
+}
+
+.tabpanel[hidden] {
+  display: none;
+}
+
+/* 面板内的页脚紧跟内容，不再额外撑高 */
+.tabpanel > .site-foot {
+  margin-top: var(--sp-10);
+}
+
+/* ------------------------------------------------------------ 投放区 */
+
+.dropzone {
+  position: absolute;
+  z-index: 30;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  bottom: var(--sp-2);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  width: min(28%, 240px);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px dashed var(--accent);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+  pointer-events: none;
+}
+
+/* 仅在「拖拽中且可并排」时浮现：由 body[data-dragging] 控制 */
+body[data-dragging="on"] .dropzone {
+  display: flex;
+  pointer-events: auto;
+}
+
+.dropzone.is-over {
+  border-style: solid;
+}
+
+.dropzone__icon .icon {
+  width: 26px;
+  height: 26px;
+}
+
+.dropzone__text {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  text-align: center;
+  line-height: var(--lh-normal);
+}
+
+/* ------------------------------------------------------------ 轻提示 */
+
+.tabs-toast {
+  position: absolute;
+  right: var(--sp-4);
+  bottom: var(--sp-4);
+  z-index: 45;
+  max-width: min(460px, 82%);
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-sm);
+  color: var(--text-strong);
+  background: var(--bg-surface);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+}
+
+.tabs-toast[hidden] {
+  display: none;
+}
+
+.tabs-toast[data-tone="warn"] {
+  border-left-color: var(--warn);
+}
+
+.tabs-toast[data-tone="ok"] {
+  border-left-color: var(--ok);
+}
+
+/* ---------------------------------------------------------- 标签菜单 */
+
+.tabmenu {
+  position: fixed;
+  z-index: 130;
+  min-width: 184px;
+  padding: var(--sp-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-3);
+}
+
+.tabmenu[hidden] {
+  display: none;
+}
+
+.tabmenu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  height: 32px;
+  padding: 0 var(--sp-3);
+  color: var(--text-body);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  border-radius: var(--r-sm);
+}
+
+.tabmenu__item:hover {
+  color: var(--text-strong);
+  background: var(--bg-hover);
+}
+
+.tabmenu__item .icon {
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+}
+
+.tabmenu__sep {
+  height: 1px;
+  margin: var(--sp-1) 0;
+  background: var(--hairline);
+}
+
+/* -------------------------------------------------------------- 尺寸 */
+
+.icon-btn--sm {
+  width: 26px;
+  height: 26px;
+}
+
+.icon-btn--sm .icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* -------------------------------------------------------------- 响应式 */
+
+/* 窄屏：不提供并排，已恢复的并排布局转为上下堆叠（不丢内容） */
+@media (max-width: 900px) {
+  .workbench[data-split="on"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 1px minmax(0, 1fr);
+  }
+
+  .tabstrip__hint {
+    display: none;
+  }
+
+  .tabpanel {
+    padding-top: var(--sp-4);
+  }
+}
+
+@media (max-width: 720px) {
+  .tabpanel {
+    padding: var(--sp-4) var(--sp-4) var(--sp-12);
+  }
+
+  .tab__main {
+    max-width: 14ch;
+  }
+
+  .tabs-toast {
+    right: var(--sp-3);
+    bottom: var(--sp-3);
+    left: var(--sp-3);
+    max-width: none;
+  }
+}

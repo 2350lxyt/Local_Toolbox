@@ -88,6 +88,15 @@ const PATHS = {
     '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>' +
     '<path d="M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1"/>' +
     '<path d="M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1"/>',
+
+  /* 标签工作台：并排显示、标签菜单与重命名 */
+  columns: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/>',
+  pencil:
+    '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  more:
+    '<circle cx="5" cy="12" r="1" fill="currentColor"/>' +
+    '<circle cx="12" cy="12" r="1" fill="currentColor"/>' +
+    '<circle cx="19" cy="12" r="1" fill="currentColor"/>',
 };
 
 /**

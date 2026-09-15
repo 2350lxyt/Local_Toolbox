@@ -1460,9 +1460,20 @@ export function saveCustomPresets(presets) {
   return writeJson(PRESETS_KEY, presets);
 }
 
-/** 读取上次使用的参数与预设选择 */
-export function loadSession() {
-  const raw = readJson(SESSION_KEY, null);
+/**
+ * 实例级配置键（docs/DESIGN.md §8.1 / §9.3）：
+ * `serial <= 1`（含工具独立页）沿用既有键，保持零迁移零回归；
+ * 同一工具的第 2 个及以后实例各用独立键，避免多个实例互相覆盖参数。
+ * 自定义预设列表（`PRESETS_KEY`）**不分区**，跨实例共享。
+ */
+export function instanceSessionKey(instance) {
+  const serial = instance && Number.isInteger(instance.serial) ? instance.serial : 1;
+  return serial > 1 ? `${SESSION_KEY}:${serial}` : SESSION_KEY;
+}
+
+/** 读取上次使用的参数与预设选择（省略 storageKey 时读默认键） */
+export function loadSession(storageKey = SESSION_KEY) {
+  const raw = readJson(storageKey, null);
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   return {
     config: normalizeConfig(raw.config),
@@ -1470,9 +1481,9 @@ export function loadSession() {
   };
 }
 
-/** 写入上次使用的参数与预设选择 */
-export function saveSession(config, presetId) {
-  return writeJson(SESSION_KEY, { config: normalizeConfig(config), presetId });
+/** 写入上次使用的参数与预设选择（省略 storageKey 时写默认键） */
+export function saveSession(config, presetId, storageKey = SESSION_KEY) {
+  return writeJson(storageKey, { config: normalizeConfig(config), presetId });
 }
 
 /* ============================================================ 界面模板 */
@@ -1817,11 +1828,17 @@ function dateStamp() {
  */
 export function init(ctx) {
   const { root, tool, utils, icons } = ctx;
-  const host = root.querySelector("#tool-body");
+  // 宿主解析：标签面板内为 [data-tool-body]，工具独立页为 #tool-body（docs/DESIGN.md §9.3）
+  const host = root.querySelector("[data-tool-body]") || root.querySelector("#tool-body");
   if (!host) return () => {};
 
   const { dom, clipboard, text: textUtils } = utils;
   const escapeHtml = dom.escapeHtml;
+
+  // 实例级配置键：同一工具可开多个实例，各自记住自己的参数（docs/DESIGN.md §9.3）
+  const sessionKey = instanceSessionKey(ctx.instance);
+  const readSession = () => loadSession(sessionKey);
+  const writeSession = (config, presetId) => saveSession(config, presetId, sessionKey);
 
   /* ------------------------------------------------------ 渲染模板 */
   host.innerHTML = TEMPLATE.replace(/__I_\w+__/g, (token) => {
@@ -2400,7 +2417,7 @@ export function init(ctx) {
     writeForm(preset.config);
     renderPresetOptions();
     render();
-    saveSession(readForm(), state.presetId);
+    writeSession(readForm(), state.presetId);
     if (!options || options.silent !== true) {
       setStatus(`已应用预设「${preset.name}」`, "ok");
     }
@@ -2501,7 +2518,7 @@ export function init(ctx) {
     if (!saveCustomPresets(state.customPresets)) {
       showError("本地存储不可用（可能处于无痕模式），本次保存仅在当前页面内有效。");
     }
-    saveSession(config, state.presetId);
+    writeSession(config, state.presetId);
     closeSaveForm();
     renderPresetOptions();
   }
@@ -2647,7 +2664,7 @@ export function init(ctx) {
     input.setSelectionRange(0, 0);
     render();
     setStatus("已按当前参数格式化", "ok");
-    saveSession(readForm(), state.presetId);
+    writeSession(readForm(), state.presetId);
   }
 
   async function copyAll() {
@@ -2739,7 +2756,7 @@ export function init(ctx) {
     if (state.syncing) return;
     markDirty();
     render();
-    saveSession(readForm(), state.presetId);
+    writeSession(readForm(), state.presetId);
   });
 
   [
@@ -2757,7 +2774,7 @@ export function init(ctx) {
       if (state.syncing) return;
       markDirty();
       render();
-      saveSession(readForm(), state.presetId);
+      writeSession(readForm(), state.presetId);
     });
   });
 
@@ -2766,7 +2783,7 @@ export function init(ctx) {
       if (state.syncing) return;
       markDirty();
       render();
-      saveSession(readForm(), state.presetId);
+      writeSession(readForm(), state.presetId);
     });
   });
 
@@ -2828,7 +2845,11 @@ export function init(ctx) {
     clearError();
   });
 
+  // 快捷键归属：标签工作台内只有「焦点在本工具面板内」时才响应，
+  // 否则并排/多标签时一次按键会同时触发多个工具（docs/DESIGN.md §9.3）
+  const inTabsWorkspace = Boolean(root.closest("[data-tabs-workspace]"));
   bind(document, "keydown", (event) => {
+    if (inTabsWorkspace && !root.contains(event.target)) return;
     if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
       event.preventDefault();
       runFormat();
@@ -2864,7 +2885,7 @@ export function init(ctx) {
     alignGutter();
   });
 
-  const session = loadSession();
+  const session = readSession();
   if (session) {
     const preset = allPresets().find((item) => item.id === session.presetId);
     state.presetId = preset && configEquals(preset.config, session.config) ? preset.id : CUSTOM_ID;

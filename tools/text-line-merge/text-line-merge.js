@@ -348,9 +348,20 @@ export function saveCustomPresets(presets) {
   return writeJson(PRESETS_KEY, presets);
 }
 
-/** 读取上次使用的参数与预设选择 */
-export function loadSession() {
-  const raw = readJson(SESSION_KEY, null);
+/**
+ * 实例级配置键（docs/DESIGN.md §8.1 / §9.3）：
+ * `serial <= 1`（含工具独立页）沿用既有键，保持零迁移零回归；
+ * 同一工具的第 2 个及以后实例各用独立键，避免多个实例互相覆盖参数。
+ * 自定义预设列表（`PRESETS_KEY`）**不分区**，跨实例共享。
+ */
+export function instanceSessionKey(instance) {
+  const serial = instance && Number.isInteger(instance.serial) ? instance.serial : 1;
+  return serial > 1 ? `${SESSION_KEY}:${serial}` : SESSION_KEY;
+}
+
+/** 读取上次使用的参数与预设选择（省略 storageKey 时读默认键） */
+export function loadSession(storageKey = SESSION_KEY) {
+  const raw = readJson(storageKey, null);
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   return {
     config: normalizeConfig(raw.config),
@@ -358,9 +369,9 @@ export function loadSession() {
   };
 }
 
-/** 写入上次使用的参数与预设选择 */
-export function saveSession(config, presetId) {
-  return writeJson(SESSION_KEY, { config: normalizeConfig(config), presetId });
+/** 写入上次使用的参数与预设选择（省略 storageKey 时写默认键） */
+export function saveSession(config, presetId, storageKey = SESSION_KEY) {
+  return writeJson(storageKey, { config: normalizeConfig(config), presetId });
 }
 
 /* ============================================================ 界面模板 */
@@ -634,10 +645,16 @@ function dateStamp() {
  */
 export function init(ctx) {
   const { root, tool, utils, icons } = ctx;
-  const host = root.querySelector("#tool-body");
+  // 宿主解析：标签面板内为 [data-tool-body]，工具独立页为 #tool-body（docs/DESIGN.md §9.3）
+  const host = root.querySelector("[data-tool-body]") || root.querySelector("#tool-body");
   if (!host) return () => {};
 
   const { dom, clipboard, text: textUtils } = utils;
+
+  // 实例级配置键：同一工具可开多个实例，各自记住自己的参数（docs/DESIGN.md §9.3）
+  const sessionKey = instanceSessionKey(ctx.instance);
+  const readSession = () => loadSession(sessionKey);
+  const writeSession = (config, presetId) => saveSession(config, presetId, sessionKey);
 
   /* ---------- 渲染模板 ---------- */
   host.innerHTML = TEMPLATE.replace(/__I_\w+__/g, (token) => {
@@ -845,7 +862,7 @@ export function init(ctx) {
     renderPresetOptions();
     syncEffects();
     refreshNow();
-    saveSession(readForm(), state.presetId);
+    writeSession(readForm(), state.presetId);
     if (!options || options.silent !== true) {
       setStatus(`已应用预设「${preset.name}」`, "ok");
     }
@@ -883,7 +900,7 @@ export function init(ctx) {
     resetRemoveButton();
 
     state.customPresets = state.customPresets.filter((item) => item.id !== preset.id);
-    saveSession(readForm(), state.presetId);
+    writeSession(readForm(), state.presetId);
     const saved = saveCustomPresets(state.customPresets);
     if (!saved) showError("本地存储不可用，删除结果仅在当前页面内有效。");
     setStatus(`已删除预设「${preset.name}」`, "warn");
@@ -950,7 +967,7 @@ export function init(ctx) {
     if (!saveCustomPresets(state.customPresets)) {
       showError("本地存储不可用（可能处于无痕模式），本次保存仅在当前页面内有效。");
     }
-    saveSession(config, state.presetId);
+    writeSession(config, state.presetId);
     closeSaveForm();
     renderPresetOptions();
   }
@@ -1089,7 +1106,7 @@ export function init(ctx) {
       ? `${outputChars} 字符 · ${selected.length} 行参与`
       : "单行输出";
 
-    saveSession(cfg, state.presetId);
+    writeSession(cfg, state.presetId);
   }
 
   function scheduleRefresh() {
@@ -1110,6 +1127,28 @@ export function init(ctx) {
   }
 
   /**
+   * 解析最近的可滚动祖先容器。
+   * 标签工作台内，面板位于 `.pane__view`（`overflow-y: auto`）中且文档本身不滚动，
+   * 因此不能假定 `window` 是滚动容器（docs/DESIGN.md §9.3）；工具独立页没有这样的容器，
+   * 返回 `null` 表示「按文档滚动处理」。
+   */
+  function findScrollContainer(node) {
+    let current = node ? node.parentElement : null;
+    while (current) {
+      const style = window.getComputedStyle(current);
+      const overflowY = style ? style.overflowY : "";
+      if (
+        (overflowY === "auto" || overflowY === "scroll") &&
+        current.scrollHeight > current.clientHeight
+      ) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+    return null;
+  }
+
+  /**
    * 把输出面板底部（含「复制结果」按钮）滚动进视口。
    * 仅在该区域被视口遮挡时才滚动；已完整可见时保持不动，避免无谓跳动。
    */
@@ -1118,8 +1157,12 @@ export function init(ctx) {
     if (!target) return;
 
     const margin = 24;
+    const container = findScrollContainer(target);
     const rect = target.getBoundingClientRect();
-    const overflow = rect.bottom - (window.innerHeight - margin);
+    const viewportBottom = container
+      ? container.getBoundingClientRect().bottom
+      : window.innerHeight;
+    const overflow = rect.bottom - (viewportBottom - margin);
     if (overflow <= 0) return;
 
     let reduceMotion = false;
@@ -1128,10 +1171,18 @@ export function init(ctx) {
     } catch (error) {
       reduceMotion = false;
     }
+    const behavior = reduceMotion ? "auto" : "smooth";
 
-    const maxTop = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-    const top = Math.min(Math.max(0, window.scrollY + overflow), maxTop);
-    window.scrollTo({ top, behavior: reduceMotion ? "auto" : "smooth" });
+    if (!container) {
+      const maxTop = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      const top = Math.min(Math.max(0, window.scrollY + overflow), maxTop);
+      window.scrollTo({ top, behavior });
+      return;
+    }
+
+    const maxTop = Math.max(0, container.scrollHeight - container.clientHeight);
+    const top = Math.min(Math.max(0, container.scrollTop + overflow), maxTop);
+    container.scrollTo({ top, behavior });
   }
 
   /**
@@ -1242,7 +1293,11 @@ export function init(ctx) {
     clearError();
   });
 
+  // 快捷键归属：标签工作台内只有「焦点在本工具面板内」时才响应，
+  // 否则并排/多标签时一次按键会同时触发多个工具（docs/DESIGN.md §9.3）
+  const inTabsWorkspace = Boolean(root.closest("[data-tabs-workspace]"));
   bind(document, "keydown", (event) => {
+    if (inTabsWorkspace && !root.contains(event.target)) return;
     if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
       event.preventDefault();
       triggerMerge();
@@ -1257,7 +1312,7 @@ export function init(ctx) {
 
   /* ---------------------------------------------------------- 启动 */
 
-  const session = loadSession();
+  const session = readSession();
   if (session) {
     const known = allPresets().some((preset) => preset.id === session.presetId);
     state.presetId = known ? session.presetId : CUSTOM_ID;

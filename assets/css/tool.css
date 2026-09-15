@@ -420,6 +420,19 @@ kbd {
   }
 }
 
+/* 标签工作台：同一套折行规则按「栏宽」而非视口宽判定（docs/DESIGN.md §3.5 / §4.4）。
+   查询容器为 .pane__view；无匹配容器时（工具独立页）本规则整体不生效，由上面的媒体查询兜底。 */
+@container pane (max-width: 1080px) {
+  .panel-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tool-head {
+    flex-direction: column-reverse;
+    gap: var(--sp-4);
+  }
+}
+
 @media (max-width: 720px) {
   /* 与紧凑基线的 20px 同步下调（见 §5.1） */
   .tool-head__title {
