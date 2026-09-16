@@ -59,6 +59,18 @@ export const TOOLS = [
     status: "ready",
     keywords: ["SQL", "格式化", "美化", "Oracle", "PostgreSQL", "高亮", "搜索"],
   },
+  {
+    id: "date-calc",
+    name: "日期天数计算器",
+    icon: "calendar",
+    description:
+      "计算日期间隔与增减推算，并按中国日历区分工作日与休息日；内置官方节假日与调休安排，支持自定义与导入导出。",
+    path: "tools/date-calc/index.html",
+    entry: "tools/date-calc/date-calc.js",
+    styles: ["tools/date-calc/date-calc.css"],
+    status: "ready",
+    keywords: ["日期", "天数", "工作日", "休息日", "节假日", "调休", "日历", "倒计时"],
+  },
 ];
 
 /** 按 id 查找工具记录 */

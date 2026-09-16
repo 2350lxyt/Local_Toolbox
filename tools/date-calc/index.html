@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>日期天数计算器 · 本地工具箱</title>
+    <meta
+      name="description"
+      content="计算日期间隔、日期增减推算与工作日/休息日统计，按中国日历判定工作日与休息日，内置 2024–2026 官方节假日与调休安排并支持自定义。全部计算在浏览器本地完成。"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f4f1ea" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)" />
+
+    <!-- 首屏主题引导：必须在样式表之前同步执行，避免明暗切换闪烁 -->
+    <script src="../../assets/js/theme-boot.js"></script>
+
+    <link rel="stylesheet" href="../../assets/css/tokens.css" />
+    <link rel="stylesheet" href="../../assets/css/base.css" />
+    <link rel="stylesheet" href="../../assets/css/shell.css" />
+    <link rel="stylesheet" href="../../assets/css/tool.css" />
+
+    <!-- 工具私有样式（仅本工具使用，不污染共享样式；同时登记在 registry.js 的 styles 中） -->
+    <link rel="stylesheet" href="./date-calc.css" />
+  </head>
+
+  <!-- data-tool 用于：1) 左侧列表高亮当前项；2) shell.js 动态挂载对应工具模块 -->
+  <body data-tool="date-calc">
+    <noscript>
+      <p class="no-script">
+        本站需要启用 JavaScript 才能运行。所有计算都在你的浏览器本地完成，不会上传任何数据。
+        <a href="../../assets/noscript.html">查看说明</a>
+      </p>
+    </noscript>
+
+    <div id="shell-root"></div>
+
+    <main class="workspace" id="workspace">
+      <header class="tool-head rise" style="--d: 0ms">
+        <div class="tool-head__main">
+          <div class="tool-head__eyebrow">
+            <p class="meta-label">工具 / date-calc</p>
+            <span class="badge badge--ok">可用</span>
+          </div>
+          <h1 class="tool-head__title">日期天数计算器</h1>
+          <p class="tool-head__desc">
+            算日期间隔、日期增减推算与工作日统计，按中国日历区分工作日与休息日。
+          </p>
+        </div>
+        <div class="tool-head__icon" aria-hidden="true">
+          <svg
+            class="icon"
+            width="26"
+            height="26"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect width="18" height="18" x="3" y="4" rx="2" />
+            <path d="M3 10h18" />
+            <path d="M8 2v4" />
+            <path d="M16 2v4" />
+          </svg>
+        </div>
+      </header>
+
+      <!-- 工具的具体界面由 tools/date-calc/date-calc.js 的 init() 渲染 -->
+      <div id="tool-body" class="rise" style="--d: 60ms"></div>
+
+      <footer class="site-foot" data-site-footer></footer>
+    </main>
+
+    <!-- 有脚本时把入口统一到标签工作台（index.html#/date-calc）；脚本不可用时本页仍完整可读 -->
+    <script src="../../assets/js/tool-redirect.js"></script>
+    <script type="module" src="../../assets/js/shell.js"></script>
+  </body>
+</html>

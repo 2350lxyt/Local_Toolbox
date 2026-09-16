@@ -1,0 +1,479 @@
+/**
+ * 《日期天数计算器》私有样式
+ * ------------------------------------------------------------------
+ * 约定（docs/DESIGN.md §9.5）：
+ *   - 选择器**一律**带 `.dc-*` 前缀。标签工作台会在同一页面同时加载多个工具的样式，
+ *     出现通用选择器会跨工具互相干扰（违反 R6）。
+ *   - 取值只引用 tokens.css 的令牌，**不硬编码色值与字号**；明暗两套主题共用语义变量。
+ *   - 唯一允许的通用选择器：文件末尾的 `[hidden]` 兜底（共享组件自带 display 会覆盖它）。
+ */
+
+/* ── 状态行 ───────────────────────────────────────────── */
+.dc-status {
+  min-height: 20px;
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.dc-status[data-tone="ok"] {
+  color: var(--ok);
+}
+
+.dc-status[data-tone="warn"] {
+  color: var(--warn);
+}
+
+.dc-status[data-tone="danger"] {
+  color: var(--danger);
+}
+
+/* ── 布局容器 ─────────────────────────────────────────── */
+.dc-stack {
+  display: grid;
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+/* 面板内的纵向节奏统一由相邻兄弟规则提供；同时给表单区域一个可读宽度上限，
+   避免宽屏下把日期框拉成整屏宽 */
+.dc-pane__body > * {
+  max-width: 760px;
+  margin-top: 0;
+}
+
+.dc-pane__body > * + * {
+  margin-top: var(--sp-3);
+}
+
+/* ── 字段对齐（§14.8 硬性约定）─────────────────────────────
+   `.field + .field` 的纵向外边距是共享样式为「单列堆叠」设计的；
+   放进并排行容器后它会把同一行的第二个字段整体下推，直接表现为「一高一低」。
+   因此凡是横向排布字段的容器都必须清零它，行内间距一律由容器的 gap 提供。 */
+.dc-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--sp-3) var(--sp-4);
+}
+
+.dc-fields > .field,
+.dc-cal-bar > .field {
+  margin-top: 0;
+}
+
+/* 标签行预留等高空间：标签文案长短 / 有无提示都不影响同行控件的基线 */
+.dc-fields .field__label,
+.dc-cal-bar .field__label {
+  align-items: flex-end;
+  min-height: 20px;
+}
+
+/* 同行控件等高：字段被栅格拉伸成等高后，让控件撑满字段的剩余高度即可自动等高
+   —— 不写死 px 高度，`<input type="date">` 的原生高度比下拉框高 2px 也能自动对齐 */
+.dc-fields .input,
+.dc-fields .select {
+  flex: 1 1 auto;
+  min-height: 42px;
+}
+
+.dc-cal-bar .select {
+  min-height: 40px;
+}
+
+/* 日历工具条内的单控件字段：与相邻图标按钮居中对齐 */
+.dc-field--bar {
+  min-width: 96px;
+  max-width: 124px;
+}
+
+/* ── 计算方式页签 ─────────────────────────────────────── */
+.dc-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-5);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.dc-mode {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 var(--sp-3);
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.dc-mode:hover {
+  background: var(--bg-hover);
+  color: var(--text-body);
+}
+
+.dc-mode:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* 激活页签：表面色 + 底部 2px 强调色指示（不改变高度，避免整行抖动） */
+.dc-mode.is-active {
+  border-color: var(--hairline);
+  background: var(--bg-surface);
+  color: var(--text-strong);
+  box-shadow: inset 0 -2px 0 0 var(--accent);
+}
+
+/* 页签面板：本身不设内边距，内部复用 .panel__body / .panel__foot */
+.dc-mode-pane {
+  display: block;
+}
+
+/* ── 统计块（复用 .stat__value / .stat__label 的语义）──── */
+.dc-stats {
+  display: grid;
+  gap: var(--sp-2);
+  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+  margin: var(--sp-3) 0 0;
+}
+
+.dc-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--bg-inset);
+}
+
+.dc-stat .stat__value {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-stat .stat__label {
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-label);
+  color: var(--text-muted);
+}
+
+.dc-stat.is-primary {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.dc-stat.is-primary .stat__value {
+  color: var(--accent);
+}
+
+/* ── 推算结果 ─────────────────────────────────────────── */
+.dc-result {
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--bg-inset);
+}
+
+.dc-result__label {
+  margin: 0;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-label);
+  color: var(--text-muted);
+}
+
+.dc-result__value {
+  margin: 2px 0 0;
+  font-size: 24px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-result__meta {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* ── 日历工具条 ───────────────────────────────────────── */
+.dc-cal-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.dc-cal-bar__title {
+  min-width: 104px;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-medium);
+  color: var(--text-strong);
+}
+
+/* 共享组件 .panel__spacer 的「撑开剩余空间」规则只在 .panel__foot 内生效，
+   此处按需补一条同语义的私有规则，把「每周起始」推到工具条右端 */
+.dc-cal-bar .panel__spacer {
+  flex: 1 1 auto;
+}
+
+/* ── 日历网格 ─────────────────────────────────────────── */
+.dc-cal {
+  display: grid;
+  gap: 3px;
+}
+
+.dc-cal__row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.dc-cal__head {
+  padding: var(--sp-1) 0;
+  text-align: center;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-label);
+  color: var(--text-muted);
+}
+
+.dc-cal__cell {
+  min-width: 0;
+}
+
+.dc-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  min-height: 42px;
+  padding: 3px 2px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--text-body);
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+/* 左侧 2px 类型色条（颜色只是辅助，类型仍由文字角标表达） */
+.dc-day::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: transparent;
+}
+
+.dc-day[data-type="weekend"]::before {
+  background: var(--info);
+}
+
+.dc-day[data-type="holiday"]::before {
+  background: var(--accent);
+}
+
+.dc-day[data-type="makeup"]::before {
+  background: var(--warn);
+}
+
+/* 已自定义：右上角小三角 */
+.dc-day.is-custom::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  border: 5px solid transparent;
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+}
+
+.dc-day:hover {
+  background: var(--bg-hover);
+  transform: translateY(-1px);
+}
+
+.dc-day:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.dc-day__num {
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-day.is-outside {
+  background: var(--bg-sunken);
+  color: var(--text-faint);
+}
+
+.dc-day.is-outside .dc-tag {
+  opacity: 0.5;
+}
+
+.dc-day.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+
+.dc-day.is-today .dc-day__num {
+  font-weight: var(--fw-semibold);
+  color: var(--accent);
+}
+
+/* ── 类型角标 ─────────────────────────────────────────── */
+.dc-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  padding: 0 3px;
+  border-radius: var(--r-xs);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  line-height: 1.35;
+}
+
+.dc-tag--workday {
+  color: var(--text-muted);
+  background: var(--bg-inset);
+}
+
+.dc-tag--makeup {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.dc-tag--weekend {
+  color: var(--info);
+  background: var(--info-soft);
+}
+
+.dc-tag--holiday {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ── 图例 ─────────────────────────────────────────────── */
+.dc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.dc-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.dc-legend__mark {
+  width: 0;
+  height: 0;
+  border: 5px solid transparent;
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+}
+
+/* ── 所选日期的类型编辑条 ─────────────────────────────── */
+.dc-editor {
+  margin-top: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--bg-inset);
+}
+
+.dc-editor__title {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--text-body);
+}
+
+.dc-editor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.dc-editor__actions .btn.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ── 底部操作条与导入面板 ─────────────────────────────── */
+.dc-cal-foot {
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.dc-cal-foot__count {
+  color: var(--text-muted);
+}
+
+.dc-cal-foot .btn.is-armed {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.dc-migrate {
+  padding: var(--sp-4);
+  border-top: 1px solid var(--hairline);
+  background: var(--bg-inset);
+}
+
+.dc-migrate__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+/* ── 动效退化 ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .dc-day,
+  .dc-status,
+  .dc-mode {
+    transition: none;
+  }
+
+  .dc-day:hover {
+    transform: none;
+  }
+}
+
+/* ── 唯一允许的通用选择器（§9.5 例外）─────────────────── */
+/* .notice 等共享组件自带 display，会覆盖浏览器对 [hidden] 的默认行为 */
+[hidden] {
+  display: none !important;
+}

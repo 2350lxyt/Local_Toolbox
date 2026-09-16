@@ -100,6 +100,11 @@ const PATHS = {
     '<circle cx="5" cy="12" r="1" fill="currentColor"/>' +
     '<circle cx="12" cy="12" r="1" fill="currentColor"/>' +
     '<circle cx="19" cy="12" r="1" fill="currentColor"/>',
+
+  /* 日期天数计算器 */
+  calendar:
+    '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>' +
+    '<path d="M8 2v4"/><path d="M16 2v4"/>',
 };
 
 /**
