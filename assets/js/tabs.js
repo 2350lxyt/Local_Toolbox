@@ -2,15 +2,18 @@
  * 标签工作台（Tabs Workspace）
  * ------------------------------------------------------------------
  * 把「左侧工具列表」的点击从「整页跳转」改为「页内打开标签页」，并且以**实例**为单位管理标签：
- *   1. 同一工具可重复打开多个互相独立的实例（各自独立面板、独立 init()、独立配置键）；
- *   2. 重复打开时显示名自动追加数字后缀（「文本名 (2)」…），原标签名称与内容不变；
- *   3. 标签可手动重命名（双击 / 菜单 / F2），允许重名，输入时实时显示；
- *   4. 面板常驻保活：切换标签只改可见性，绝不重建 DOM 或重复 init() —— 输入内容因此不丢；
- *   5. 两段式关闭、拖拽排序、拖到画面右侧并排显示（最多两栏）、实例数量上限；
- *   6. 布局持久化（仅实例 id / 工具 id / 显示名 / 顺序 / 分栏 / 激活，绝不含任何输入内容）与 hash 直链；
- *   7. 无障碍：tablist 语义、roving tabindex、方向键 / F2 / Delete、标签菜单（拖拽的键盘等价路径）。
+ *   1. **首页是常驻标签**（保留标识 `home`，不可关闭/拖拽/重命名）：标签栏从始至终存在，
+ *      「顶栏 + 标签栏」的几何在首页与工具标签两种状态下完全一致，因此开关标签不会造成页面抖动；
+ *   2. 同一工具可重复打开多个互相独立的实例（各自独立面板、独立 init()、独立配置键）；
+ *   3. 重复打开时显示名自动追加数字后缀（「文本名 (2)」…），原标签名称与内容不变；
+ *   4. 标签可手动重命名（双击 / 菜单 / F2），允许重名，输入时实时显示；
+ *   5. 面板常驻保活：切换标签只改可见性，绝不重建 DOM 或重复 init() —— 输入内容因此不丢；
+ *   6. 两段式关闭、拖拽排序、拖到画面右侧并排显示（最多两栏）、实例数量上限；
+ *   7. 标签溢出时，标签栏两端提供向前/向后滚动按钮（只滚动视图，不改变激活标签）；
+ *   8. 布局持久化（仅实例 id / 工具 id / 显示名 / 顺序 / 分栏 / 激活，绝不含任何输入内容）与 hash 直链；
+ *   9. 无障碍：tablist 语义、roving tabindex、方向键 / F2 / Delete、标签菜单（拖拽的键盘等价路径）。
  *
- * 契约与设计依据：docs/DESIGN.md §2.6 / §4.4 / §5.2 / §6 / §7 / §8.1 / §9.3。
+ * 契约与设计依据：docs/DESIGN.md §2.6 / §4.1 / §4.2 / §4.4 / §5.2 / §6 / §7 / §8.1 / §9.3。
  * 本文件不包含任何具体工具的业务逻辑。
  */
 
@@ -25,15 +28,22 @@ export const TABS_MAX_PANES = 2;
 export const TABS_HASH_PREFIX = "#/";
 export const CLOSE_CONFIRM_MS = 3000;
 export const TOAST_MS = 4000;
-/** 同时打开的标签实例数上限（多个重型工具实例并存时保守取值） */
+/** 同时打开的标签实例数上限（首页标签不计入；多个重型工具实例并存时保守取值） */
 export const MAX_INSTANCES = 8;
 /** 标签显示名长度上限（与预设名一致） */
 export const MAX_NAME_LENGTH = 40;
+/** 首页常驻标签的保留标识：恒居 `state.panes.primary[0]`（docs/DESIGN.md §4.4） */
+export const HOME_ID = "home";
+/** 标签栏滚动按钮：一次滚动「一屏」的比例与最小像素（§4.4 / §6） */
+export const TAB_SCROLL_RATIO = 0.8;
+export const TAB_SCROLL_MIN = 120;
 
-/** 布局持久化版本（v1 = 工具 id 数组，v2 = 实例记录，见 docs/DESIGN.md §8.1） */
-const LAYOUT_VERSION = 2;
+/** 布局持久化版本（v1 = 工具 id 数组；v2 = 实例记录；v3 = 含首页保留标识，见 §8.1） */
+const LAYOUT_VERSION = 3;
 /** 实例 id 分隔符：`<tool-id>--<serial>` */
 const INSTANCE_SEP = "--";
+/** 首页标签的显示名 */
+const HOME_NAME = "首页";
 /** 栏位标识；并排上限由 TABS_MAX_PANES 决定（docs/DESIGN.md §4.4） */
 const PANE_IDS = ["primary", "secondary"].slice(0, TABS_MAX_PANES);
 
@@ -104,7 +114,7 @@ export function normalizeNameInput(value) {
  *        动态加载工具模块并调用 init(ctx)；instance 会作为 ctx.instance 传给工具
  * @param {(host: HTMLElement, message: string) => void} [options.renderError] 渲染可读的加载失败提示
  * @param {(scope?: ParentNode) => void} [options.renderFooter]                填充页脚（与独立页保持一致）
- * @param {(instance: object|null) => void} [options.onActiveChange]           激活实例变化（供外壳同步侧栏高亮与面包屑）
+ * @param {(instance: object|null) => void} [options.onActiveChange]           激活项变化（首页标签时传 null）
  * @param {() => void} [options.requestLayoutSignal]                           请求外壳派发一次重测量信号
  * @returns {Object|null}
  */
@@ -113,7 +123,6 @@ export function createTabsWorkspace(options = {}) {
 
   const workspaceRoot = dom.qs("[data-tabs-workspace]");
   const workspace = dom.qs("#workspace");
-  const homeView = dom.qs("[data-home-view]");
   if (!workspaceRoot || !workspace) return null;
 
   const workbench = dom.qs("[data-workbench]", workspaceRoot);
@@ -126,29 +135,45 @@ export function createTabsWorkspace(options = {}) {
     return {
       id: paneId,
       root,
+      strip: root ? dom.qs("[data-tabstrip]", root) : null,
       list: root ? dom.qs("[data-tablist]", root) : null,
       view: root ? dom.qs("[data-pane-view]", root) : null,
+      prevBtn: root ? dom.qs('[data-action="scroll-prev"]', root) : null,
+      nextBtn: root ? dom.qs('[data-action="scroll-next"]', root) : null,
     };
   }
 
   const panes = { primary: paneRef("primary"), secondary: paneRef("secondary") };
 
-  /** 状态：每个栏内的**实例**顺序 + 各栏激活实例 + 当前聚焦栏（§4.4） */
+  /** 状态：每个栏内的**标签条目**顺序（含首页保留标识）+ 各栏激活条目 + 当前聚焦栏（§4.4） */
   const state = {
-    panes: { primary: [], secondary: [] },
-    active: { primary: "", secondary: "" },
+    panes: { primary: [HOME_ID], secondary: [] },
+    active: { primary: HOME_ID, secondary: "" },
     focused: "primary",
   };
 
   /**
-   * 实例记录表：instanceId → 记录
+   * 工具实例记录表：instanceId → 记录
    * {
-   *   id, toolId, serial, name, renamed, renaming,
+   *   id, toolId, serial, name, renamed, renaming, home: false,
    *   tab:   { el, main, nameEl, close, menu, rename },
    *   panel: { el, host, titleEl, cleanup, mounted, mounting }
    * }
    */
   const instances = new Map();
+
+  /** 首页常驻标签的节点记录（与实例记录同构，便于统一渲染；不可重命名、不可关闭） */
+  const homeRecord = {
+    id: HOME_ID,
+    toolId: "",
+    serial: 0,
+    name: HOME_NAME,
+    renamed: false,
+    renaming: false,
+    home: true,
+    tab: null,
+    panel: null,
+  };
 
   const disposers = [];
   let deckEl = null; // 标签菜单容器
@@ -157,6 +182,7 @@ export function createTabsWorkspace(options = {}) {
   let armTimer = 0;
   let toastTimer = 0;
   let dragId = "";
+  let scrollSyncRaf = 0;
   let destroyed = false;
 
   const bind = (target, type, handler, opts) => {
@@ -166,29 +192,22 @@ export function createTabsWorkspace(options = {}) {
 
   /* --------------------------------------------------------- 基础查询 */
 
-  const instanceIds = () => [...state.panes.primary, ...state.panes.secondary];
-  const recordOf = (id) => instances.get(id) || null;
+  /** 栏内全部条目（含首页保留标识） */
+  const entryIds = () => [...state.panes.primary, ...state.panes.secondary];
+  /** 仅工具实例 id（不含首页） */
+  const instanceIds = () => entryIds().filter((id) => id !== HOME_ID);
   const paneOf = (id) => PANE_IDS.find((paneId) => state.panes[paneId].includes(id)) || "";
-  const nameOf = (id) => {
-    const record = instances.get(id);
-    if (record) return record.name;
-    const tool = getToolById(id);
-    return tool ? tool.name : id;
-  };
-  const toolIdOf = (id) => {
-    const record = instances.get(id);
-    if (record) return record.toolId;
-    return getToolById(id) ? id : "";
-  };
+  /** 统一节点访问：首页与工具实例共用同一入口，避免空值分支散落各处 */
+  const nodeSetFor = (id) => (id === HOME_ID ? homeRecord : instances.get(id) || null);
   const namesInUse = () => [...instances.values()].map((record) => record.name);
   const serialsOfTool = (toolId) =>
     [...instances.values()]
       .filter((record) => record.toolId === toolId)
       .map((record) => record.serial);
 
-  /** 供外壳使用的实例视图（不外泄内部节点引用） */
+  /** 供外壳使用的实例视图（首页标签返回 null：外壳据此显示「工具集」、取消侧栏高亮） */
   const publicInstance = (record) =>
-    record
+    record && !record.home
       ? {
           id: record.id,
           toolId: record.toolId,
@@ -215,8 +234,16 @@ export function createTabsWorkspace(options = {}) {
     }
   }
 
-  /** 当前激活实例：优先聚焦栏的激活项，否则退回任一非空栏 */
-  function activeInstanceId() {
+  function prefersReducedMotion() {
+    try {
+      return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /** 当前激活条目：优先聚焦栏的激活项，否则退回任一非空栏（可能返回 HOME_ID） */
+  function activeEntryId() {
     if (state.panes[state.focused].length && state.active[state.focused]) {
       return state.active[state.focused];
     }
@@ -245,7 +272,7 @@ export function createTabsWorkspace(options = {}) {
         JSON.stringify({
           version: LAYOUT_VERSION,
           instances: instanceIds()
-            .map((id) => recordOf(id))
+            .map((id) => instances.get(id))
             .filter(Boolean)
             .map((record) => ({
               id: record.id,
@@ -264,13 +291,15 @@ export function createTabsWorkspace(options = {}) {
   }
 
   /**
-   * 归一化持久化数据，并兼容 v1（`panes` 内为工具 id 字符串）→ v2（实例记录）的迁移。
-   * 规则：过滤未注册 / 未就绪工具、去重实例 id、序号冲突时改派最小可用序号、
-   *      显示名冲突时按后缀规则顺延、总数收敛到 MAX_INSTANCES、主栏非空、栏数 ≤ 2。
+   * 归一化持久化数据，并兼容历史结构 → v3：
+   *   v1：`panes` 内为工具 id 字符串（无 `home`、无 `instances`）
+   *   v2：`panes` 内为实例 id（无 `home`）
+   *   v3：`panes.primary[0] === "home"`
+   * 规则：过滤未注册 / 未就绪工具、去重实例 id、序号冲突改派最小可用序号、显示名冲突按后缀顺延、
+   *      实例总数收敛到 MAX_INSTANCES、首页强制且仅位于主栏首位、激活项必须存在且允许为 `home`。
    */
   function normalizeLayout(data) {
     const out = {
-      instances: [],
       panes: { primary: [], secondary: [] },
       active: { primary: "", secondary: "" },
       focused: "primary",
@@ -298,7 +327,7 @@ export function createTabsWorkspace(options = {}) {
       return id;
     };
 
-    // v2 的实例声明表（v1 数据没有这一段，全部走工具 id 迁移分支）
+    // v2/v3 的实例声明表（v1 数据没有这一段，全部走工具 id 迁移分支）
     const declared = new Map();
     if (Array.isArray(source.instances)) {
       source.instances.forEach((item) => {
@@ -312,7 +341,8 @@ export function createTabsWorkspace(options = {}) {
     PANE_IDS.forEach((paneId) => {
       const values = Array.isArray(sourcePanes[paneId]) ? sourcePanes[paneId] : [];
       values.forEach((value) => {
-        if (typeof value !== "string" || byId.size >= MAX_INSTANCES) return;
+        if (typeof value !== "string" || value === HOME_ID) return; // 首页由下方统一强制注入
+        if (byId.size >= MAX_INSTANCES) return;
         const declaration = declared.get(value) || null;
         const toolId = declaration && typeof declaration.tool === "string" ? declaration.tool : value;
         const tool = getToolById(toolId);
@@ -330,25 +360,32 @@ export function createTabsWorkspace(options = {}) {
 
     out.instances = [...byId.values()];
 
-    // 主栏必须非空：只剩并排栏时整体迁回主栏（§4.4 分栏收敛）
-    if (!out.panes.primary.length && out.panes.secondary.length) {
-      out.panes.primary = out.panes.secondary;
-      out.panes.secondary = [];
-    }
+    // 首页保留标签：只允许出现在主栏首位（防御性去重，无论历史结构如何）
+    out.panes.primary = out.panes.primary.filter((id) => id !== HOME_ID);
+    out.panes.secondary = out.panes.secondary.filter((id) => id !== HOME_ID);
+    out.panes.primary.unshift(HOME_ID);
 
     const sourceActive =
       source.active && typeof source.active === "object" ? source.active : {};
     PANE_IDS.forEach((paneId) => {
       const list = out.panes[paneId];
       const wanted = sourceActive[paneId];
-      // v2：激活项就是实例 id，直接命中
+
+      if (paneId === "primary" && wanted === HOME_ID) {
+        out.active.primary = HOME_ID;
+        return;
+      }
+      // v2/v3：激活项是实例 id，直接命中
       if (list.includes(wanted)) {
         out.active[paneId] = wanted;
         return;
       }
       // v1（迁移）：激活项是工具 id，映射到该栏中该工具 serial 最小的实例，尽量保住原状态
       if (typeof wanted === "string") {
-        const match = list.find((id) => byId.get(id) && byId.get(id).toolId === wanted);
+        const match = list.find((id) => {
+          const record = byId.get(id);
+          return record && record.toolId === wanted;
+        });
         if (match) {
           out.active[paneId] = match;
           return;
@@ -360,16 +397,14 @@ export function createTabsWorkspace(options = {}) {
     out.focused =
       PANE_IDS.includes(source.focused) && out.panes[source.focused].length
         ? source.focused
-        : out.panes.primary.length
-        ? "primary"
-        : "secondary";
+        : "primary";
 
     return out;
   }
 
   /* --------------------------------------------------------------- hash */
 
-  /** hash 只编码「哪个工具」（§2.6）：`#/<toolId>` */
+  /** hash 只编码「哪个工具」（§2.6）：`#/<toolId>`；首页 = 无 hash */
   function hashToolId() {
     const raw = window.location.hash || "";
     if (!raw.startsWith(TABS_HASH_PREFIX)) return "";
@@ -383,7 +418,7 @@ export function createTabsWorkspace(options = {}) {
     return isMountable(getToolById(id)) ? id : "";
   }
 
-  /** 把当前激活实例所属的工具同步到 hash：用 replaceState，不污染前进后退历史（§2.6） */
+  /** 把当前激活条目所属的工具同步到 hash：用 replaceState，不污染前进后退历史（§2.6） */
   function syncHash(toolId) {
     const next = toolId ? `${TABS_HASH_PREFIX}${encodeURIComponent(toolId)}` : "";
     if ((window.location.hash || "") === next) return;
@@ -410,6 +445,65 @@ export function createTabsWorkspace(options = {}) {
   }
 
   /* ------------------------------------------------------- 标签与面板 */
+
+  /** 首页标签：**只显示图标**（无文字，节省横向空间）；不可关闭 / 菜单 / 重命名，也不可拖拽 */
+  function createHomeTab() {
+    const wrap = dom.el("div", {
+      className: "tab tab--home",
+      dataset: { instance: HOME_ID },
+      attrs: { role: "presentation", draggable: "false" },
+    });
+    const main = dom.el("button", {
+      className: "tab__main",
+      attrs: {
+        type: "button",
+        role: "tab",
+        id: `tab-${HOME_ID}`,
+        "aria-controls": `tabpanel-${HOME_ID}`,
+        "aria-selected": "false",
+        tabindex: "-1",
+        // 纯图标按钮：无障碍名称与悬停提示都由 aria-label / title 提供（docs/DESIGN.md §7）
+        "aria-label": HOME_NAME,
+        title: HOME_NAME,
+      },
+    });
+    main.innerHTML = `<span class="tab__icon" aria-hidden="true">${icon("home", 15)}</span>`;
+    dom.append(wrap, [main]);
+    return { el: wrap, main, nameEl: null, close: null, menu: null, rename: null };
+  }
+
+  /** 首页面板：承载既有 `.home-view`（由 ensureHomeNode 移入），版式见 §4.2 */
+  function createHomePanel() {
+    const article = dom.el("article", {
+      className: "tabpanel tabpanel--home",
+      dataset: { instance: HOME_ID },
+      attrs: {
+        role: "tabpanel",
+        id: `tabpanel-${HOME_ID}`,
+        "aria-labelledby": `tab-${HOME_ID}`,
+        tabindex: "0",
+        hidden: true,
+      },
+    });
+    return { el: article };
+  }
+
+  /** 创建首页常驻标签与面板：把既有 `.home-view` 节点**整体移入**（只移动不重建，保留无脚本兜底） */
+  function ensureHomeNode() {
+    if (homeRecord.tab && homeRecord.panel) return;
+    const homeView = dom.qs("[data-home-view]");
+    homeRecord.tab = createHomeTab();
+    const panel = createHomePanel();
+    homeRecord.panel = {
+      el: panel.el,
+      host: null,
+      titleEl: null,
+      cleanup: null,
+      mounted: true,
+      mounting: false,
+    };
+    if (homeView) panel.el.append(homeView);
+  }
 
   function createTab(record, tool) {
     const wrap = dom.el("div", {
@@ -497,13 +591,16 @@ export function createTabsWorkspace(options = {}) {
   /** 把实例的显示名刷到所有可见位置（标签栏 + 面板标题 + 无障碍文案），不重建节点 */
   function applyInstanceName(record) {
     const tab = record.tab;
-    if (tab) {
-      if (tab.nameEl) tab.nameEl.textContent = record.name;
-      dom.setAttrs(tab.main, { title: record.name });
+    if (!tab) return;
+    if (tab.nameEl) tab.nameEl.textContent = record.name;
+    dom.setAttrs(tab.main, { title: record.name });
+    if (tab.close) {
       dom.setAttrs(tab.close, {
         "aria-label": `关闭「${record.name}」`,
         title: `关闭「${record.name}」`,
       });
+    }
+    if (tab.menu) {
       dom.setAttrs(tab.menu, { "aria-label": `「${record.name}」的标签操作` });
     }
     if (record.panel && record.panel.titleEl) {
@@ -573,7 +670,7 @@ export function createTabsWorkspace(options = {}) {
       const pane = panes[paneId];
       if (!pane.list || !pane.view) return;
       state.panes[paneId].forEach((id) => {
-        const record = instances.get(id);
+        const record = nodeSetFor(id);
         if (!record) return;
         if (record.tab) pane.list.append(record.tab.el);
         if (record.panel) pane.view.append(record.panel.el);
@@ -582,9 +679,10 @@ export function createTabsWorkspace(options = {}) {
       Array.from(pane.list.querySelectorAll(".tab")).forEach((node) => {
         if (!state.panes[paneId].includes(node.dataset.instance)) node.remove();
       });
-      // 只有一个标签时谈不上「排序 / 并排」，隐藏提示避免给出无意义的引导
+      // 栏内只有首页时谈不上「排序 / 并排」，隐藏提示避免给出无意义的引导
       const hint = dom.qs("[data-pane-hint]", pane.root);
-      if (hint) hint.hidden = state.panes[paneId].length < 2;
+      if (hint) hint.hidden = !state.panes[paneId].some((id) => id !== HOME_ID);
+      syncScrollButtons(paneId);
     });
   }
 
@@ -593,7 +691,7 @@ export function createTabsWorkspace(options = {}) {
     PANE_IDS.forEach((paneId) => {
       const activeId = state.active[paneId];
       state.panes[paneId].forEach((id) => {
-        const record = instances.get(id);
+        const record = nodeSetFor(id);
         if (!record) return;
         const active = id === activeId;
         if (record.tab) {
@@ -605,11 +703,12 @@ export function createTabsWorkspace(options = {}) {
       });
       if (activeId) revealTab(paneId, activeId);
       if (activeId) mountPanel(activeId);
+      syncScrollButtons(paneId);
     });
 
-    const activeId = activeInstanceId();
-    const record = recordOf(activeId);
-    syncHash(record ? record.toolId : "");
+    const activeId = activeEntryId();
+    const record = nodeSetFor(activeId);
+    syncHash(record && !record.home ? record.toolId : "");
     writeLayout();
     if (typeof onActiveChange === "function") onActiveChange(publicInstance(record));
     if (requestLayoutSignal) requestLayoutSignal();
@@ -618,7 +717,7 @@ export function createTabsWorkspace(options = {}) {
   /** 让激活的标签在横向标签栏里可见（不触发整页滚动） */
   function revealTab(paneId, id) {
     const pane = panes[paneId];
-    const record = instances.get(id);
+    const record = nodeSetFor(id);
     if (!pane || !pane.list || !record || !record.tab || pane.root.hidden) return;
     const listRect = pane.list.getBoundingClientRect();
     const itemRect = record.tab.el.getBoundingClientRect();
@@ -630,17 +729,70 @@ export function createTabsWorkspace(options = {}) {
     }
   }
 
-  /** 首页总览 ↔ 标签工作台切换 + 分栏开关 */
-  function syncVisibility() {
-    const hasTabs = instanceIds().length > 0;
+  /** 工作台常驻 + 并排栏显隐（v1.4.0：不再切换 data-view，首页与标签共用同一种结构） */
+  function syncPaneVisibility() {
     const split = state.panes.secondary.length > 0;
-
-    workspace.dataset.view = hasTabs ? "tabs" : "home";
-    if (homeView) homeView.hidden = hasTabs;
-    workspaceRoot.hidden = !hasTabs;
-    panes.primary.root.hidden = !hasTabs;
+    workspaceRoot.hidden = false;
+    panes.primary.root.hidden = false;
     panes.secondary.root.hidden = !split;
     workbench.dataset.split = split ? "on" : "off";
+  }
+
+  /* ------------------------------------------------- 标签栏滚动按钮 */
+
+  /** 溢出显隐 + 两端禁用态（只读几何，O(1)） */
+  function syncScrollButtons(paneId) {
+    const pane = panes[paneId];
+    if (!pane || !pane.list || !pane.prevBtn || !pane.nextBtn) return;
+    if (pane.root.hidden) {
+      pane.prevBtn.hidden = true;
+      pane.nextBtn.hidden = true;
+      return;
+    }
+    const list = pane.list;
+    const overflow = list.scrollWidth - list.clientWidth > 1;
+    pane.prevBtn.hidden = !overflow;
+    pane.nextBtn.hidden = !overflow;
+    if (!overflow) return;
+    pane.prevBtn.disabled = list.scrollLeft <= 1;
+    pane.nextBtn.disabled = list.scrollLeft + list.clientWidth >= list.scrollWidth - 1;
+  }
+
+  /** 以 rAF 合并同步（避免滚动过程中逐帧写样式） */
+  function scheduleScrollSync() {
+    if (scrollSyncRaf) return;
+    scrollSyncRaf = window.requestAnimationFrame(() => {
+      scrollSyncRaf = 0;
+      PANE_IDS.forEach(syncScrollButtons);
+    });
+  }
+
+  /** 点击滚动约一屏：**不改变激活标签**（"查看更前/更后的标签"由滚动完成） */
+  function scrollTabs(paneId, direction) {
+    const pane = panes[paneId];
+    if (!pane || !pane.list) return;
+    const list = pane.list;
+    const step = Math.max(TAB_SCROLL_MIN, Math.round(list.clientWidth * TAB_SCROLL_RATIO));
+    const behavior = prefersReducedMotion() ? "auto" : "smooth";
+    list.scrollBy({ left: direction * step, behavior });
+  }
+
+  function setupScrollButtons() {
+    PANE_IDS.forEach((paneId) => {
+      const pane = panes[paneId];
+      if (!pane) return;
+      if (pane.prevBtn) {
+        pane.prevBtn.innerHTML = icon("chevronLeft", 15);
+        bind(pane.prevBtn, "click", () => scrollTabs(paneId, -1));
+      }
+      if (pane.nextBtn) {
+        pane.nextBtn.innerHTML = icon("chevronRight", 15);
+        bind(pane.nextBtn, "click", () => scrollTabs(paneId, 1));
+      }
+      // 原生横向滚动（触控板 / 滚轮 / 键盘）也要同步按钮状态
+      bind(pane.list, "scroll", scheduleScrollSync, { passive: true });
+    });
+    bind(window, "resize", scheduleScrollSync);
   }
 
   /* ------------------------------------------------------------- 操作 */
@@ -669,6 +821,7 @@ export function createTabsWorkspace(options = {}) {
       name: nextInstanceName(tool.name, namesInUse()),
       renamed: false,
       renaming: false,
+      home: false,
       tab: null,
       panel: null,
     };
@@ -681,15 +834,15 @@ export function createTabsWorkspace(options = {}) {
     state.active[target] = record.id;
     state.focused = target;
 
-    syncVisibility();
+    syncPaneVisibility();
     renderTabs();
     syncActiveUI();
     return record.id;
   }
 
-  /** 激活某栏内的实例（并聚焦该栏） */
+  /** 激活某栏内的条目（含首页；并聚焦该栏） */
   function activate(id, focusTab = false) {
-    const record = instances.get(id);
+    const record = nodeSetFor(id);
     if (!record) return;
     const paneId = paneOf(id);
     if (!paneId) return;
@@ -698,7 +851,7 @@ export function createTabsWorkspace(options = {}) {
 
     state.active[paneId] = id;
     state.focused = paneId;
-    syncVisibility();
+    syncPaneVisibility();
     renderTabs();
     syncActiveUI();
     if (focusTab && record.tab) record.tab.main.focus();
@@ -712,10 +865,10 @@ export function createTabsWorkspace(options = {}) {
     syncActiveUI();
   }
 
-  /** 关闭实例：执行清理函数、摘除节点、把激活权交给右邻（无则左邻） */
+  /** 关闭实例：执行清理函数、摘除节点、把激活权交给右邻（无则左邻，最后回落到首页） */
   function closeInstance(id) {
-    const record = instances.get(id);
-    if (!record) return;
+    const record = nodeSetFor(id);
+    if (!record || record.home) return; // 首页标签不可关闭（§4.4）
     const paneId = paneOf(id);
     if (!paneId) return;
 
@@ -737,25 +890,21 @@ export function createTabsWorkspace(options = {}) {
     instances.delete(id);
 
     list.splice(index, 1);
-    state.active[paneId] = list[index] || list[index - 1] || "";
+    state.active[paneId] = list[index] || list[index - 1] || (paneId === "primary" ? HOME_ID : "");
     if (armedCloseId === id) armedCloseId = "";
 
     normalizeState();
-    syncVisibility();
+    syncPaneVisibility();
     renderTabs();
     syncActiveUI();
     toast(`已关闭「${label}」`, "ok");
   }
 
-  /** 移动实例：同栏排序或跨栏并排（§4.4 第 5、6 条） */
+  /** 移动实例：同栏排序或跨栏并排（§4.4 第 5、6 条；首页不可移动，主栏插入下限为 1） */
   function moveInstance(id, targetPane, index) {
+    if (id === HOME_ID) return; // 首页常驻主栏首位
     const source = paneOf(id);
     if (!source || !PANE_IDS.includes(targetPane)) return;
-
-    if (targetPane === "secondary" && state.panes.primary.length < 2) {
-      toast("需要至少两个标签才能并排显示。", "warn");
-      return;
-    }
 
     const sourceList = state.panes[source];
     const targetList = state.panes[targetPane];
@@ -765,13 +914,14 @@ export function createTabsWorkspace(options = {}) {
     let at = typeof index === "number" && index >= 0 ? index : targetList.length;
     if (source === targetPane && from < at) at -= 1;
     at = Math.max(0, Math.min(at, targetList.length));
+    if (targetPane === "primary") at = Math.max(1, at); // 永远排在首页之后
     targetList.splice(at, 0, id);
 
     state.active[targetPane] = id;
     state.focused = targetPane;
 
     normalizeState();
-    syncVisibility();
+    syncPaneVisibility();
     renderTabs();
     syncActiveUI();
   }
@@ -784,28 +934,28 @@ export function createTabsWorkspace(options = {}) {
     state.active.secondary = "";
     state.focused = "primary";
     normalizeState();
-    syncVisibility();
+    syncPaneVisibility();
     renderTabs();
     syncActiveUI();
     toast("已退出并排显示。", "ok");
   }
 
-  /** 分栏/激活项收敛：实例必须存在；主栏必须非空；激活项必须存在于本栏 */
+  /** 收敛：条目必须存在（首页恒存在）；首页只在主栏首位；激活项必须存在于本栏 */
   function normalizeState() {
     PANE_IDS.forEach((paneId) => {
-      state.panes[paneId] = state.panes[paneId].filter((id) => instances.has(id));
-      const list = state.panes[paneId];
-      if (list.length && !list.includes(state.active[paneId])) state.active[paneId] = list[0];
-      if (!list.length) state.active[paneId] = "";
+      state.panes[paneId] = state.panes[paneId].filter((id) => id === HOME_ID || instances.has(id));
+      if (paneId !== "primary") state.panes[paneId] = state.panes[paneId].filter((id) => id !== HOME_ID);
     });
 
-    if (!state.panes.primary.length && state.panes.secondary.length) {
-      state.panes.primary = state.panes.secondary;
-      state.panes.secondary = [];
-      state.active.primary = state.active.secondary || state.panes.primary[0] || "";
-      state.active.secondary = "";
-      state.focused = "primary";
-    }
+    // 首页保留标签：主栏首位唯一
+    state.panes.primary = state.panes.primary.filter((id) => id !== HOME_ID);
+    state.panes.primary.unshift(HOME_ID);
+
+    PANE_IDS.forEach((paneId) => {
+      const list = state.panes[paneId];
+      if (list.length && !list.includes(state.active[paneId])) state.active[paneId] = list[0];
+      if (!list.length) state.active[paneId] = paneId === "primary" ? HOME_ID : "";
+    });
 
     if (!state.panes.secondary.length && state.focused === "secondary") {
       state.focused = "primary";
@@ -851,10 +1001,15 @@ export function createTabsWorkspace(options = {}) {
     });
   }
 
-  /** 进入内联重命名（双击标题 / 菜单 / F2） */
+  /** 进入内联重命名（双击标题 / 菜单 / F2）；首页标签不可重命名 */
   function beginRename(id) {
-    const record = instances.get(id);
-    if (!record || !record.tab || record.renaming) return;
+    const record = nodeSetFor(id);
+    if (!record) return;
+    if (record.home || !record.tab || !record.tab.rename) {
+      toast("首页标签不可重命名。", "warn");
+      return;
+    }
+    if (record.renaming) return;
 
     // 同一时刻只允许一个标签处于重命名态，并且不与「关闭待确认」叠加
     instances.forEach((item) => {
@@ -894,8 +1049,8 @@ export function createTabsWorkspace(options = {}) {
 
   /** 提交重命名：空名视为取消并提示；成功则更新显示、落盘并播报（允许重名） */
   function commitRename(id, value) {
-    const record = instances.get(id);
-    if (!record || !record.renaming) return;
+    const record = nodeSetFor(id);
+    if (!record || !record.renaming || record.home) return;
     const next = normalizeNameInput(value);
     endRename(record);
 
@@ -909,14 +1064,14 @@ export function createTabsWorkspace(options = {}) {
     record.renamed = true;
     applyInstanceName(record);
     writeLayout();
-    if (typeof onActiveChange === "function" && activeInstanceId() === id) {
+    if (typeof onActiveChange === "function" && activeEntryId() === id) {
       onActiveChange(publicInstance(record));
     }
     toast(`已重命名为「${next}」`, "ok");
   }
 
   function cancelRename(id) {
-    const record = instances.get(id);
+    const record = nodeSetFor(id);
     if (!record || !record.renaming) return;
     const name = record.name;
     endRename(record);
@@ -926,6 +1081,7 @@ export function createTabsWorkspace(options = {}) {
   /* ------------------------------------------------- 两段式关闭确认 */
 
   function handleCloseClick(id) {
+    if (id === HOME_ID) return;
     if (armedCloseId !== id) {
       armClose(id);
       return;
@@ -936,8 +1092,8 @@ export function createTabsWorkspace(options = {}) {
 
   function armClose(id) {
     disarmClose();
-    const record = instances.get(id);
-    if (!record || !record.tab) return;
+    const record = nodeSetFor(id);
+    if (!record || record.home || !record.tab || !record.tab.close) return;
     armedCloseId = id;
     record.tab.close.classList.add("is-armed");
     record.tab.close.innerHTML = `<span class="tab__close-label">确认关闭</span>`;
@@ -955,9 +1111,9 @@ export function createTabsWorkspace(options = {}) {
       armTimer = 0;
     }
     if (!armedCloseId) return;
-    const record = instances.get(armedCloseId);
+    const record = nodeSetFor(armedCloseId);
     armedCloseId = "";
-    if (!record || !record.tab) return;
+    if (!record || !record.tab || !record.tab.close) return;
     record.tab.close.classList.remove("is-armed");
     record.tab.close.innerHTML = icon("close", 13);
     dom.setAttrs(record.tab.close, {
@@ -980,8 +1136,8 @@ export function createTabsWorkspace(options = {}) {
   }
 
   function openMenu(id, anchor) {
-    const record = instances.get(id);
-    if (!deckEl || !anchor || !record) return;
+    const record = nodeSetFor(id);
+    if (!deckEl || !anchor || !record || record.home) return;
     menuAnchor = anchor;
 
     const inSecondary = paneOf(id) === "secondary";
@@ -1000,7 +1156,7 @@ export function createTabsWorkspace(options = {}) {
       menuItem("关闭该标签", "close", () => {
         closeMenu();
         armClose(id);
-        if (record.tab) record.tab.close.focus();
+        if (record.tab && record.tab.close) record.tab.close.focus();
       })
     );
 
@@ -1035,7 +1191,7 @@ export function createTabsWorkspace(options = {}) {
 
   function clearDragState() {
     if (dragId) {
-      const record = instances.get(dragId);
+      const record = nodeSetFor(dragId);
       if (record && record.tab) record.tab.el.classList.remove("is-dragging");
     }
     dragId = "";
@@ -1044,14 +1200,19 @@ export function createTabsWorkspace(options = {}) {
     if (dropzone) dropzone.classList.remove("is-over");
   }
 
-  /** 计算插入位置：指针越过某个标签的中线即插到它前面 */
+  /** 计算插入位置：指针越过某个标签的中线即插到它前面；主栏下限为 1（不越过首页） */
   function computeDropIndex(list, clientX) {
     const items = Array.from(list.querySelectorAll(".tab"));
-    for (let index = 0; index < items.length; index += 1) {
-      const rect = items[index].getBoundingClientRect();
-      if (clientX < rect.left + rect.width / 2) return index;
+    let index = items.length;
+    for (let i = 0; i < items.length; i += 1) {
+      const rect = items[i].getBoundingClientRect();
+      if (clientX < rect.left + rect.width / 2) {
+        index = i;
+        break;
+      }
     }
-    return items.length;
+    const paneId = list.closest("[data-pane]") ? list.closest("[data-pane]").dataset.pane : "";
+    return paneId === "primary" ? Math.max(1, index) : index;
   }
 
   function showMarker(list, index) {
@@ -1093,7 +1254,7 @@ export function createTabsWorkspace(options = {}) {
         if (target.closest(".tab__main")) activate(id);
       });
 
-      // 双击标签标题进入重命名（需求 4：直观的重命名界面）
+      // 双击标签标题进入重命名（需求 4：直观的重命名界面）；首页标签会被 beginRename 拒绝并提示
       bind(pane.list, "dblclick", (event) => {
         const target = event.target instanceof Element ? event.target : null;
         if (!target || !target.closest(".tab__main")) return;
@@ -1116,14 +1277,17 @@ export function createTabsWorkspace(options = {}) {
       bind(pane.view, "pointerdown", () => focusPane(paneId));
       bind(pane.view, "focusin", () => focusPane(paneId));
 
-      // 拖拽
-      bind(pane.list, "dragstart", onDragStart);
-      bind(pane.list, "dragover", onDragOver);
-      bind(pane.list, "dragleave", () => {
-        const marker = pane.list.querySelector(".tabstrip__marker");
-        if (marker) marker.remove();
-      });
-      bind(pane.list, "drop", onDrop);
+      // 拖拽：委托提升到 .tabstrip（标签列表 + 滚动按钮的同层容器），
+      // 并对滚动按钮自身的事件做忽略，避免「拖到按钮上」丢失投放。
+      if (pane.strip) {
+        bind(pane.strip, "dragstart", onDragStart);
+        bind(pane.strip, "dragover", (event) => onDragOver(event, pane));
+        bind(pane.strip, "dragleave", () => {
+          const marker = pane.list.querySelector(".tabstrip__marker");
+          if (marker) marker.remove();
+        });
+        bind(pane.strip, "drop", (event) => onDrop(event, pane));
+      }
     });
   }
 
@@ -1155,6 +1319,11 @@ export function createTabsWorkspace(options = {}) {
       return;
     }
     if (event.key === "Delete" || event.key === "Backspace") {
+      if (currentId === HOME_ID) {
+        event.preventDefault();
+        toast("首页标签不可关闭。", "warn");
+        return;
+      }
       event.preventDefault();
       handleCloseClick(currentId);
       return;
@@ -1165,8 +1334,8 @@ export function createTabsWorkspace(options = {}) {
     }
     if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
       event.preventDefault();
-      const record = instances.get(currentId);
-      if (record && record.tab) openMenu(currentId, record.tab.menu);
+      const record = nodeSetFor(currentId);
+      if (record && record.tab && record.tab.menu) openMenu(currentId, record.tab.menu);
     }
   }
 
@@ -1174,8 +1343,8 @@ export function createTabsWorkspace(options = {}) {
     const tabEl = event.target instanceof Element ? event.target.closest(".tab") : null;
     if (!tabEl) return;
     const id = tabEl.dataset.instance;
-    const record = instances.get(id);
-    if (!record || record.renaming || !paneOf(id)) return;
+    const record = nodeSetFor(id);
+    if (!record || record.home || record.renaming || !paneOf(id)) return;
 
     dragId = id;
     tabEl.classList.add("is-dragging");
@@ -1188,26 +1357,26 @@ export function createTabsWorkspace(options = {}) {
       }
     }
     // 只有当「拖到右侧并排」确实可执行时才浮现投放区，避免给出不可用的承诺
-    const canSplit = !isNarrow() && !state.panes.secondary.length && state.panes.primary.length >= 2;
+    // v1.4.0：主栏永不为空（含首页），因此不再要求「至少两个标签」
+    const canSplit = !isNarrow() && !state.panes.secondary.length;
     if (canSplit) document.body.dataset.dragging = "on";
   }
 
-  function onDragOver(event) {
+  function onDragOver(event, pane) {
     if (!dragId) return;
+    if (event.target instanceof Element && event.target.closest(".tabstrip__scroll")) return;
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
-    showMarker(event.currentTarget, computeDropIndex(event.currentTarget, event.clientX));
+    showMarker(pane.list, computeDropIndex(pane.list, event.clientX));
   }
 
-  function onDrop(event) {
+  function onDrop(event, pane) {
     if (!dragId) return;
     event.preventDefault();
-    const list = event.currentTarget;
-    const paneId = list.closest("[data-pane]").dataset.pane;
-    const index = computeDropIndex(list, event.clientX);
+    const index = computeDropIndex(pane.list, event.clientX);
     const id = dragId;
     clearDragState();
-    moveInstance(id, paneId, index);
+    moveInstance(id, pane.id, index);
   }
 
   function setupDropzone() {
@@ -1272,7 +1441,11 @@ export function createTabsWorkspace(options = {}) {
     // 直链与浏览器前进后退：hash 只表达「哪个工具」，落在其 serial 最小的实例上（§2.6）
     bind(window, "hashchange", () => {
       const toolId = hashToolId();
-      if (!toolId) return;
+      if (!toolId) {
+        // hash 被清空（例如用户手动清掉）：回到首页标签
+        if (state.panes.primary.includes(HOME_ID)) activate(HOME_ID);
+        return;
+      }
       const existing = findInstanceByTool(toolId);
       if (existing) activate(existing.id);
       else openInstance(toolId);
@@ -1281,7 +1454,8 @@ export function createTabsWorkspace(options = {}) {
     // 窄屏切换：并排自动转为上下堆叠，需要重新测量
     let media = null;
     const onNarrowChange = () => {
-      syncVisibility();
+      syncPaneVisibility();
+      scheduleScrollSync();
       if (requestLayoutSignal) requestLayoutSignal();
     };
     try {
@@ -1303,13 +1477,26 @@ export function createTabsWorkspace(options = {}) {
   /* --------------------------------------------------------------- 启动 */
 
   function boot() {
+    ensureHomeNode();
+
     const stored = readLayout();
     if (stored) {
-      stored.instances.forEach((instance) => {
-        if (instances.size >= MAX_INSTANCES) return;
-        instances.set(instance.id, { ...instance, renaming: false, tab: null, panel: null });
-        ensureNodes(instances.get(instance.id));
-      });
+      // 恢复**两栏**的全部实例（并排栏的标签同样要建立节点，否则会被 normalizeState 当作脏数据剔除）
+      [...stored.panes.primary, ...stored.panes.secondary]
+        .filter((id) => id !== HOME_ID)
+        .forEach((id) => {
+          if (instances.size >= MAX_INSTANCES) return;
+          const instance = (stored.instances || []).find((item) => item.id === id);
+          if (!instance) return;
+          instances.set(instance.id, {
+            ...instance,
+            home: false,
+            renaming: false,
+            tab: null,
+            panel: null,
+          });
+          ensureNodes(instances.get(instance.id));
+        });
       state.panes = stored.panes;
       state.active = stored.active;
       state.focused = stored.focused;
@@ -1328,7 +1515,7 @@ export function createTabsWorkspace(options = {}) {
     }
 
     normalizeState();
-    syncVisibility();
+    syncPaneVisibility();
     renderTabs();
     syncActiveUI();
   }
@@ -1338,6 +1525,10 @@ export function createTabsWorkspace(options = {}) {
     disarmClose();
     closeMenu();
     clearDragState();
+    if (scrollSyncRaf) {
+      window.cancelAnimationFrame(scrollSyncRaf);
+      scrollSyncRaf = 0;
+    }
     if (toastTimer) {
       window.clearTimeout(toastTimer);
       toastTimer = 0;
@@ -1359,11 +1550,12 @@ export function createTabsWorkspace(options = {}) {
   }
 
   setupPaneEvents();
+  setupScrollButtons();
   setupDropzone();
   setupMenuEvents();
   setupGlobalEvents();
 
-  return { boot, openInstance, destroy };
+  return { boot, openInstance, activate, destroy };
 }
 
 export default createTabsWorkspace;

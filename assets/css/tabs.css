@@ -23,21 +23,14 @@ body[data-mode="tabs"] .shell__main {
   overflow: hidden;
 }
 
+/* v1.4.0：取消 data-view 双结构 —— 首页与标签**共用同一种垂直结构**
+   （顶栏 → 标签栏 → 面板视口），使「顶栏 + 标签栏」的几何在任何状态下完全一致，
+   从根上消除打开/关闭标签时的页面抖动（docs/DESIGN.md §4.2 / §4.4）。 */
 body[data-mode="tabs"] .workspace {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-
-/* 首页视图：沿用首页原有的 1280 上限与内边距，滚动发生在这里 */
-body[data-mode="tabs"] .workspace[data-view="home"] {
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-/* 标签视图：撑满可用宽度，取消内边距，滚动交给每一栏 */
-body[data-mode="tabs"] .workspace[data-view="tabs"] {
   max-width: none;
   padding: 0;
   overflow: hidden;
@@ -130,6 +123,16 @@ body[data-mode="tabs"] .workspace[data-view="tabs"] {
   white-space: nowrap;
 }
 
+/* 标签栏两端滚动按钮（v1.4.0）：仅在标签溢出时显示，到端 disabled（不改变标签栏高度） */
+.tabstrip__scroll {
+  flex: 0 0 auto;
+}
+
+.tabstrip__scroll:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* 拖拽排序时的插入位置指示 */
 .tabstrip__marker {
   flex: 0 0 auto;
@@ -204,6 +207,13 @@ body[data-mode="tabs"] .workspace[data-view="tabs"] {
   border: 0;
   border-radius: inherit;
   white-space: nowrap;
+}
+
+/* 首页标签（v1.4.0）：只显示图标，因此收紧内边距成为紧凑的方形图标标签；
+   高度与活动态沿用 .tab 基线，标签栏高度不受影响（docs/DESIGN.md §4.4 / §5.2） */
+.tab--home .tab__main {
+  gap: 0;
+  padding: 0 var(--sp-2);
 }
 
 .tab__icon {
@@ -308,6 +318,13 @@ body[data-mode="tabs"] .workspace[data-view="tabs"] {
 /* 面板内的页脚紧跟内容，不再额外撑高 */
 .tabpanel > .site-foot {
   margin-top: var(--sp-10);
+}
+
+/* 首页常驻标签的面板（v1.4.0）：承载既有 .home-view，版式沿用原首页
+   （内容宽度上限 --content-max、内边距 --sp-8 / 16~48px / --sp-16），视觉与改造前等价 */
+.tabpanel--home {
+  max-width: var(--content-max);
+  padding: var(--sp-8) clamp(var(--sp-5), 4vw, var(--sp-12)) var(--sp-16);
 }
 
 /* ------------------------------------------------------------ 投放区 */

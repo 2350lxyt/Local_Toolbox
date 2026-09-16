@@ -251,14 +251,20 @@
   flex-direction: column;
 }
 
+/* 顶栏几何硬化（docs/DESIGN.md §4.1）：高度在**任何状态**下都完全一致，且不得被子项挤压。
+   flex: 0 0 auto + min/max-height 双保险，杜绝「打开标签时头部变高/被压缩」造成的页面抖动。 */
 .topbar {
   position: sticky;
   top: 0;
   z-index: 40;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: var(--sp-3);
   height: var(--topbar-h);
+  min-height: var(--topbar-h);
+  max-height: var(--topbar-h);
+  overflow: hidden;
   padding: 0 clamp(var(--sp-4), 3vw, var(--sp-8));
   background: var(--bg-base);
   border-bottom: 1px solid var(--hairline);

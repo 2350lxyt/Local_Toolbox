@@ -34,7 +34,7 @@
     <div id="shell-root"></div>
 
     <main class="workspace" id="workspace">
-      <!-- 首页总览：未打开任何工具标签时显示（外壳会按需切换 data-view 与 hidden） -->
+      <!-- 首页总览：boot 时被整体移入「首页」常驻标签的面板（.tabpanel--home），只移动不重建 -->
       <div class="home-view" data-home-view>
         <section class="hero rise" style="--d: 0ms">
           <div>
@@ -66,13 +66,30 @@
       <div class="tabs-workspace" data-tabs-workspace hidden>
         <div class="workbench" data-workbench data-split="off">
           <section class="pane" data-pane="primary" aria-label="主栏">
-            <div class="tabstrip">
+            <div class="tabstrip" data-tabstrip>
+              <!-- 标签溢出时才显示（icon 由 tabs.js 注入） -->
+              <button
+                class="icon-btn icon-btn--sm tabstrip__scroll"
+                type="button"
+                data-action="scroll-prev"
+                aria-label="向前滚动标签"
+                title="向前滚动标签"
+                hidden
+              ></button>
               <div
                 class="tabstrip__list"
                 role="tablist"
                 aria-label="主栏已打开的工具"
                 data-tablist
               ></div>
+              <button
+                class="icon-btn icon-btn--sm tabstrip__scroll"
+                type="button"
+                data-action="scroll-next"
+                aria-label="向后滚动标签"
+                title="向后滚动标签"
+                hidden
+              ></button>
               <p class="tabstrip__hint meta-label" data-pane-hint>拖拽排序 · 拖到右侧并排</p>
             </div>
             <div class="pane__view" data-pane-view></div>
@@ -81,13 +98,29 @@
           <div class="workbench__divider" aria-hidden="true"></div>
 
           <section class="pane" data-pane="secondary" aria-label="并排栏" hidden>
-            <div class="tabstrip">
+            <div class="tabstrip" data-tabstrip>
+              <button
+                class="icon-btn icon-btn--sm tabstrip__scroll"
+                type="button"
+                data-action="scroll-prev"
+                aria-label="向前滚动标签"
+                title="向前滚动标签"
+                hidden
+              ></button>
               <div
                 class="tabstrip__list"
                 role="tablist"
                 aria-label="并排栏已打开的工具"
                 data-tablist
               ></div>
+              <button
+                class="icon-btn icon-btn--sm tabstrip__scroll"
+                type="button"
+                data-action="scroll-next"
+                aria-label="向后滚动标签"
+                title="向后滚动标签"
+                hidden
+              ></button>
               <button
                 class="icon-btn icon-btn--sm"
                 type="button"
