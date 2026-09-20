@@ -71,6 +71,18 @@ export const TOOLS = [
     status: "ready",
     keywords: ["日期", "天数", "工作日", "休息日", "节假日", "调休", "日历", "倒计时"],
   },
+  {
+    id: "text-diff",
+    name: "文本对比",
+    icon: "diff",
+    description:
+      "左右两栏文本对照，自动高亮行级与行内差异，支持拖入文件、两侧独立搜索、差异跳转、折叠相同行与代码高亮。",
+    path: "tools/text-diff/index.html",
+    entry: "tools/text-diff/text-diff.js",
+    styles: ["tools/text-diff/text-diff.css"],
+    status: "ready",
+    keywords: ["文本", "对比", "比较", "差异", "diff", "代码高亮", "两栏"],
+  },
 ];
 
 /** 按 id 查找工具记录 */

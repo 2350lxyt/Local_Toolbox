@@ -4,9 +4,16 @@
 > 后续任何功能调整都必须先比对本文档；若确需改变既定设计，**必须先更新本文档并写明变更理由**，再改动代码。
 > 提交信息的正文中请引用相关章节（例如 `refs docs/DESIGN.md §10.3`）。
 
-- 文档版本：1.5.2
-- 最近更新：2026-09-16
+- 文档版本：1.6.0
+- 最近更新：2026-09-20
 - 对应代码版本：v0.1.0
+
+> **v1.6.0 变更摘要（B 级 · 新增工具）**：新增第 4 个工具《文本对比》（`text-diff`）—— 左右两栏文本对照，
+> 拖拽文件或选中文本即可载入；行级对齐后高亮差异（底色 + 左侧标记条 + 行号旁 `+`/`−`/`~` 三重标识），
+> 并对「修改行」做**行内词级细化高亮**；两侧独立搜索、`F7` 跳转差异、差异统计与相似度、
+> 折叠相同行（只读档位）、忽略空白/大小写等对比选项；按可用宽度在**并排**与**统一**视图间自动或手动切换。
+> 新增选项：**软换行**（默认关闭）、**字号 px 级调整**、**代码高亮**（语言注册表式，首版 11 种语言，便于后续扩展）。
+> 受影响章节：§2.3 / §8.1 / §11.1 / §15（新增）/ 附录 B。
 
 > **v1.5.2 变更摘要（B 级 · 《日期天数计算器》口径参数）**：三个页签各自获得「起点是否计入」的口径开关
 > ——日期间隔的**含首尾**、日期推算的**计入基准日**、天数计算的**计入当天**（默认均不含起点）；
@@ -143,9 +150,10 @@
 │   ├── index.html                      工具独立入口页（有脚本时重定向到标签工作台，无脚本时仍完整可读）
 │   ├── <tool-id>.js                    工具独立模块（仅导出 init）
 │   ├── <tool-id>.css                   工具私有样式（可选，仅本工具使用）
-│   └── <附加数据模块>.js               纯数据 / 纯函数模块（可选，v1.5.0；无 DOM、无副作用，见 §9.6）
+│   └── <附加纯函数模块>.js             纯数据 / 纯函数模块（可选，v1.5.0；无 DOM、无副作用，见 §9.6）
 │   ▸ 现有工具：text-line-merge（《文本行合并》§10）、sql-format（《SQL 格式化》§13）、
-│     date-calc（《日期天数计算器》§14，含附加数据模块 `cn-holidays.js`）
+│     date-calc（《日期天数计算器》§14，附加模块 `cn-holidays.js`）、
+│     text-diff（《文本对比》§15，附加模块 `diff-core.js` + `highlight.js`）
 ├── assets/
 │   ├── css/  tokens.css base.css shell.css tool.css tabs.css
 │   ├── js/   registry.js shell.js tabs.js theme.js theme-boot.js icons.js
@@ -561,6 +569,7 @@ toolbox:<全局键>              跨工具/外壳数据
 | `toolbox:<tool-id>:config:<serial>` | 工具 | **同一工具第 2 个及以后实例**的上次参数与预设选择（模式化键；`serial >= 2`，见下） | `{ config, presetId }` |
 | `toolbox:date-calc:config` | 工具 | 《日期天数计算器》上次使用的参数（当前页签 / 天数口径 / 推算单位 / 周起始 / 日历视图年月） | `{ config }` |
 | `toolbox:date-calc:calendar` | 工具 | 《日期天数计算器》自定义日历**覆盖层**（**跨实例共享**，见下） | `{ version: 1, overrides: { "YYYY-MM-DD": "workday" \| "weekend" \| "holiday" \| "makeup" } }` |
+| `toolbox:text-diff:config` | 工具 | 《文本对比》的**全部选项**（视图 / 上下文行数 / 软换行 / 字号 / 语言 / 对比选项 / 搜索选项 / 行内高亮 / 滚动同步） | `{ config }`（字段见 §15.2） |
 
 > `toolbox:tabs` 只允许记录「布局与名称」，任何工具输入（粘贴文本、SQL 正文等）都不得写入其中（R5、§8.3）。
 > 读取时必须逐项校验：过滤未注册 / `status !== 'ready'` / 缺少 `entry` 的实例、重复实例 id 去重、栏数收敛为 2、
@@ -900,6 +909,9 @@ export function instanceSessionKey(instance);  // 由 ctx.instance 推导实例�
 | 在标签栏两端加滚动按钮 | **B** | 先在 §5.2 / §6 定义基线与交互（只滚动视图、不改变激活标签），再改 `tabs.js` / `index.html` / `icons.js` |
 | 把工具内部的多种计算方式改成页签切换 | **B** | 先在 §14.1 / §14.8 定义页签结构、ARIA 与键盘约定（选择随焦点移动、切换不重建面板），再用**工具私有**样式实现；**不得**复用外壳 `.tabstrip` / `.tab`；页签选择属参数，登记进 §14.2 |
 | 修复同排字段「一高一低」 | **B** | 属布局缺陷：根因见 §14.8「字段对齐约定」（`.field + .field` 的纵向外边距在并排行容器内必须清零）；用度量断言验证而非目测 |
+| 给工具加「只读视图档位」（如折叠相同行） | **B** | 先在规格里定义**档位语义**与「只读」提示（见 §15.4），再改代码：`<textarea>` 物理上无法折叠行，因此折叠只能是**互斥的视图模式**，不得假装成叠加开关 |
+| 给工具加代码高亮 | **B / C** | 必须先建立**语言注册表**（一种语言 = 一组配置，见 §15.6），语言选择属参数并登记 §8.1 键；**禁止**引入高亮库（R3/R4），也**禁止**跨工具导入既有工具的分词器（R6） |
+| 给编辑器加字号 / 软换行等表面选项 | **B** | 属参数：先在 §15.2 增补字段与默认值，再改代码；字号作用于编辑器与行号槽**两者**，软换行必须同时处理「左右对齐行的行高」一致性（§15.5） |
 | 让头部高度恒定 / 消除开标签时的抖动 | **B** | 属结构问题：按 §4.1 / §4.2 让两种状态的几何一致；**禁止**用高度过渡动画掩盖，并需逐帧度量验证 |
 
 ### 11.2 提交纪律
@@ -1333,6 +1345,174 @@ export function instanceSessionKey(instance);
 
 ---
 
+## 15. 《文本对比》功能规格
+
+> 工具 id：`text-diff`；页面 `tools/text-diff/`；模块 v1.0.0；状态 `ready`。
+> 附加纯函数模块：`tools/text-diff/diff-core.js`（差分算法）与 `tools/text-diff/highlight.js`（代码高亮），见 §9.6。
+
+### 15.1 定位与布局例外
+
+- **定位**：把两段文本放进左右两栏对照查看，自动找出并高亮差异（哪一行、行内哪几个词），并支持搜索与差异跳转；
+  载入方式支持键入、粘贴、**拖入文件或选中文本**、以及每栏的「选择文件…」按钮（键盘等价路径）。
+- **布局例外（同 §13.1）**：主区是「两栏对照 + 行号槽 + 高亮层」，**不套用** `.panel-grid` 的 7:5 版式；
+  两栏等宽并列、中间 1px 发丝线分隔；**统一视图**为单栏（前缀列 + 行号 + 内容）。
+- **视图自动切换**：`view='auto'` 时按**容器可用宽度**（`ResizeObserver` 观察工具自身容器，
+  阈值 `AUTO_VIEW_MIN_WIDTH = 900`）选并排或统一；用户手动切换后该实例固定为 `'side'`/`'unified'`，不再自动覆盖。
+  容器宽度 ≠ 窗口宽度（标签并排时），因此**不得**只看 `window.innerWidth`。
+
+### 15.2 参数模型（唯一开关集合，R7）
+
+| 字段 | 取值 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `view` | `'auto'` \| `'side'` \| `'unified'` | `'auto'` | 视图：自动 / 并排 / 统一 |
+| `context` | `'all'` \| `10` \| `3` \| `1` \| `0` | `'all'` | 上下文行数；`0` = 只看差异；**非 `all` 即只读折叠视图**（§15.4） |
+| `softWrap` | `boolean` | `false` | **软换行**：关闭时长行出现横向滚动条（默认，与代码编辑器一致）；开启后折行且**不出横向滚动条** |
+| `fontSize` | 10–24 的整数（px） | `14` | 编辑器与**行号槽**共用的字号 |
+| `language` | 语言 id（§15.6） | `'text'` | 代码高亮语言；`'auto'` 为自动识别 |
+| `inlineHighlight` | `boolean` | `true` | 「修改行」的行内词级细化高亮 |
+| `syncScroll` | `boolean` | `true` | 两侧滚动同步 |
+| `ignoreCase` | `boolean` | `false` | 忽略大小写 |
+| `ignoreTrailingSpace` | `boolean` | `false` | 忽略每行首尾空白 |
+| `ignoreAllSpace` | `boolean` | `false` | 忽略全部空白 |
+| `ignoreBlankLines` | `boolean` | `false` | 忽略空行（空行不参与判定） |
+| `ignoreLineEnding` | `boolean` | `true` | 忽略行尾符差异（CRLF / LF 归一化） |
+| `searchCaseSensitive` | `boolean` | `false` | 搜索区分大小写 |
+| `searchWholeWord` | `boolean` | `false` | 搜索全词匹配 |
+
+**规则**：任何行为差异都必须由上表字段表达，不得存在隐藏分支（R7）；新增字段须先更新本表再改代码。
+**明确不设**「主口径」类冗余开关（§14.2 的教训）。
+
+### 15.3 差异算法与判定口径
+
+- **行归一化 → 行哈希**：按对比选项把每行归一化（大小写 / 空白 / 空行 / 行尾符），经 `Map<string, int>` 映射为整数 id 序列；
+  之后全部是整数比较。
+- **差分**：先剥离公共前后缀（O(n)），再用 **Myers 贪心**（O((N+M)·D)，内存 O(D)）；
+  **禁止**朴素 O(N×M) DP 表（10000×10000 会占用数百 MB）。
+- **块配对**：相邻的删除块与新增块按顺序一一配对（配对数 = `min(删除行数, 新增行数)`）得到「修改行」，
+  其余为纯增 / 纯删；**只有配对行**才做行内细化。
+- **行内词级**：按「词 / 标点 / 空白」边界切分 token 序列后复用同一套差分；行字符数 > `MAX_INLINE_LINE_LEN` 时跳过。
+- **统计口径**：新增 / 删除 / 修改 / 相同**行数**；
+  **相似度 = 相同行数 ÷ max(左侧总行数, 右侧总行数)**，界面上须写成「相同 42 / 较大侧 50 = 84%」使口径可见。
+- **降级**：单侧行数 > `MAX_LINES` 或差异块数 > `MAX_DIFFS` 时降级为「整块替换」粗粒度结果，并**明确提示已降级**。
+
+### 15.4 视图与折叠语义（关键取舍）
+
+`<textarea>` 是纯文本框，**物理上无法折叠或隐藏行**，因此折叠只能是**互斥的视图档位**，不得假装成叠加开关：
+
+- `context === 'all'`（默认）→ **可编辑态**：两栏为 `textarea` + 高亮层 + 行号槽，显示全部行。
+- `context` 为 `10 / 3 / 1 / 0` → **只读折叠视图**：用 DOM 逐行渲染，相同行折叠为「⋯ 折叠 N 行相同内容 ⋯」
+  的**真实可聚焦按钮**（`aria-expanded`，点击展开 / 收起），编辑器 `textarea` 隐藏。
+- 只读折叠视图**必须**在界面上给出提示：「折叠视图为只读，把「上下文行数」切回「全部」即可编辑」。
+- 折叠视图单次渲染行数上限 `MAX_FOLD_RENDER_ROWS`，超限提示改用「只看差异」（`context = 0`）。
+
+### 15.5 编辑器表面（沿用 §13.5 机制）
+
+- **透明 `textarea` + 高亮层 + 行号槽**三层叠加：`textarea` 负责输入 / 选区 / IME / 撤销，高亮层负责差异与词级 `mark`，
+  行号槽显示行号与 `+` / `−` / `~` 标识。**明确排除 `contenteditable`**（粘贴、撤销、IME 与跨浏览器差异过大）。
+- 三层**字体、字号（`fontSize`）、行高、内边距、`tab-size: 4` 必须完全一致**；用 `--td-sbw`
+  （`input.offsetWidth - input.clientWidth`）补偿滚动条宽度，保证软换行位置对齐。
+- **软换行（`softWrap`）**：`false` 时 `textarea` 与高亮层均 `white-space: pre` + 横向滚动条（默认）；
+  `true` 时均 `white-space: pre-wrap`，且**左右对齐行必须行高同步**——同一行的两侧高度取较大者
+  （否则插入 / 删除行后左右会错位）；实现方式须保证高亮层与 `textarea` 的换行结果一致（同宽、同字体）。
+- **滚动同步**：按**行号映射**同步（顶部行索引 → 另一侧该行的 `offsetTop`），而非单纯像素同步；
+  跳转差异时两栏按行对齐滚动；`syncScroll` 关闭时各自独立。
+
+### 15.6 代码高亮（语言注册表，可扩展）
+
+- **一种语言 = 一组配置**（R7：不得含专属逻辑分支）：
+  `{ id, label, lineComment: [], blockComment: [[start, end]], strings: [[open, close]], keywords, literals, identStart, caseInsensitive }`。
+  新增语言 = 在注册表里加一条配置，不改分词器。
+- **首版语言**：`text`（纯文本）与 `auto`（自动识别）固定包含，另含
+  **SQL / JSON / XML(HTML) / JavaScript / TypeScript / CSS / Java / Python / Shell / YAML / Markdown**。
+- **分词输出**（token 类型）：`comment` / `string` / `number` / `keyword` / `literal` / `punct` / `plain`；
+  分词器为**通用单遍扫描**，不做语法分析（不做语义着色）。
+- **与差异层的合成顺序**：行级底色（差异）→ 词级 `mark`（差异）→ 语法着色（**只改前景色，不改底色**）。
+  同一行的两套切分（语法 token 与词级差异段）必须正确**合并**（按边界切分后再着色），不得互相覆盖。
+- **自动识别**（`auto`）按行首特征启发式判定：`{`/`[` → JSON；`<` → XML/HTML；`SELECT|INSERT|UPDATE|DELETE|CREATE`
+  等关键字 → SQL；`#!` → Shell；`---` 或 `key:` 密集 → YAML；`#` 标题或 ``` → Markdown；其余 → `text`。
+  识别结果须在界面显示（如语言选择框自动落到识别结果，或状态行提示），不得静默。
+- **性能**：单侧文本超过 `MAX_HIGHLIGHT_CHARS` 时自动关闭语法着色并提示（对齐 §13.6 的既有风格）。
+
+### 15.7 搜索与差异导航
+
+- **两侧独立搜索**：每栏各有搜索条（关键词 / 区分大小写 / 全词 / 上一个 / 下一个 / 命中计数）；
+  `Ctrl/Cmd+F` 打开并聚焦**焦点所在栏**（焦点不在任一侧时默认左栏）；`Enter` / `Shift+Enter` 跳下一 / 上一个；
+  `Esc` 关闭（纳入 §6 的单一 `Esc` 阶梯）。
+- 搜索命中与差异高亮**视觉必须可区分**（命中用外框 + 强调色浅底），且共存时互不破坏；命中计数用 `role="status"` 播报。
+- **差异导航**：上一个 / 下一个差异按钮 + `F7` / `Shift+F7`；显示「第 n / N 处差异」；跳转时两栏按行对齐滚动，
+  并把当前差异块醒目标出（左侧标记条加粗 + 微弱强调底色）；无差异时按钮禁用并提示「两侧内容一致」。
+- **主操作**：`Ctrl/Cmd+Enter` = 重新对比并跳到第一个差异。
+
+### 15.8 拖放载入
+
+- 两栏各自是投放目标：`dragover` 必须 `preventDefault()`；拖拽中该栏显示「虚线强调描边 + 强调色浅底」的投放态。
+- 两条路径：`DataTransfer.files`（`FileReader.readAsText(file, "utf-8")`）与 `DataTransfer.getData("text/plain")`（拖选中的文本）。
+- **覆盖行为**：直接覆盖 + 状态行提示「已载入 xxx.txt（覆盖原有内容）」；读取失败 / 空文件 / 二进制文件给可读错误。
+- **键盘等价路径（§7 硬性）**：每栏提供「选择文件…」按钮（`<label class="btn" for>` + `.sr-only` 的 `<input type="file">`）。
+
+### 15.9 边界行为（必须保持）
+
+| 场景 | 行为 |
+| --- | --- |
+| 两侧皆空 | 统计全 0、差异块为 0，提示「拖入文件或粘贴文本开始对比」 |
+| 仅一侧有内容 | 有内容一侧全部行按新增 / 删除计，相似度 0% |
+| 两侧完全相同 | 差异块 0，导航按钮禁用并提示「两侧内容一致」，相似度为 100% |
+| 行尾符混用（CRLF / LF） | `ignoreLineEnding` 默认开启 → 视为相同；关闭时按原文判定 |
+| 末行无换行符 | 与有换行符的同一内容视为同一行；行数按实际行数计（不因末尾换行符多算一行） |
+| 单行超过 `MAX_INLINE_LINE_LEN` | 跳过行内词级细化，仅整行高亮 |
+| 单侧行数 > `MAX_LINES` 或差异 > `MAX_DIFFS` | 降级为粗粒度对比并明确提示已降级 |
+| 单侧字符数 > `MAX_HIGHLIGHT_CHARS` | 关闭语法着色并提示 |
+| `context` 非 `all` | 只读折叠视图，界面提示如何回到编辑态 |
+| 折叠视图行数 > `MAX_FOLD_RENDER_ROWS` | 提示改用「只看差异」或缩小输入 |
+| 拖入空文件 | 提示「文件为空，未载入」 |
+| 拖入含 NUL 字节的二进制文件 | 提示「这不是文本文件，未载入」 |
+| `FileReader` 读取失败 | `.notice--danger` 可读中文错误，不静默 |
+| 搜索无命中 | 计数为 `0 / 0` 并提示「未找到匹配项」，不移动视图 |
+| `localStorage` 不可用 | 提示「选项仅在当前页面内有效」，功能不中断 |
+| 面板隐藏（标签未激活） | 不响应快捷键；重新可见后由外壳重测量信号恢复（§4.4） |
+
+### 15.10 纯函数 API（可导出、可脱离 DOM 验证）
+
+```js
+/* diff-core.js */
+export const DEFAULT_CONFIG;
+export const CONTEXT_VALUES / MAX_LINES / MAX_DIFFS / MAX_INLINE_LINE_LEN;
+export function normalizeConfig(partial);
+export function configEquals(a, b);
+export function splitText(text, options);              // → { lines: string[], hasTrailingNewline }
+export function normalizeLine(line, options);          // 按对比选项归一化，用于判定
+export function diffLines(leftText, rightText, options);
+// → { rows: [{ left, right, kind: 'same'|'insert'|'delete'|'modify', leftNo, rightNo }],
+//     stats: { insert, delete, modify, same, similarity, base },
+//     blocks: [{ index, rowStart, rowEnd, kind }], degraded: false, reason: '' }
+export function diffWords(leftLine, rightLine, options);   // → { left: Seg[], right: Seg[] }，Seg = { text, changed }
+export function foldRows(rows, context, expandedKeys);     // → [{ type:'rows'|'gap', rows?, count?, key? }]
+export function findMatches(text, query, options);         // → [{ line, start, end }]
+export function detectLanguage(text, languages);            // 自动识别（返回语言 id）
+
+/* highlight.js */
+export const LANGUAGES;                                     // 语言注册表（id → 配置）
+export const LANGUAGE_LIST;                                 // [{ id, label }]，供选择框渲染
+export function tokenizeLine(line, languageId);             // → [{ text, type }]
+export function highlightSegments(line, languageId, wordSegments); // 语法着色与词级差异段合并 → [{ text, type, changed }]
+```
+
+### 15.11 存储键
+
+| 键 | 内容 |
+| --- | --- |
+| `toolbox:text-diff:config` | 全部选项（`serial >= 2` 用 `:config:<serial>`，按实例分区） |
+
+**两侧文本内容、搜索关键词、拖入的文件内容一律不做任何持久化**（R5）；本工具不做导入导出（用户已明确排除）。
+
+### 15.12 性能与降级
+
+- 行哈希 O(n)；前后缀剥离 O(n)；Myers O((N+M)·D)；渲染用 **rAF 合并**，一轮计算完成后一次性渲染，不做逐行 DOM 更新。
+- 高亮层拼接 HTML **必须** `escapeHtml`（§9.4），否则用户文本会破坏渲染。
+- 语法着色只在长度阈值内进行；超限、超行数、超差异数一律**降级并提示**，不做无界计算。
+
+---
+
 ## 附录 A：令牌速查
 
 ```
@@ -1383,6 +1563,15 @@ export function instanceSessionKey(instance);
 | | 两段式确认超时 | 3000ms（「恢复内置预设」） |
 | | 状态行清除 | 4000ms |
 | `cn-holidays.js` | `COVERAGE_YEARS` | `[2024, 2025, 2026]`（内置官方日历数据覆盖范围，来源见 §14.4） |
+| `text-diff.js` / `diff-core.js` | `DEBOUNCE_MS` | 180（与既有工具一致） |
+| | `MAX_LINES` | 20000（单侧行数上限，超限降级为粗粒度对比） |
+| | `MAX_DIFFS` | 20000（差异块上限，超限降级） |
+| | `MAX_INLINE_LINE_LEN` | 2000（超过此行字符数则跳过行内词级细化） |
+| | `MAX_FOLD_RENDER_ROWS` | 3000（折叠视图单次渲染行数上限） |
+| | `AUTO_VIEW_MIN_WIDTH` | 900（`view='auto'` 时并排视图所需的最小可用宽度） |
+| | `CONTEXT_VALUES` | `all` / `10` / `3` / `1` / `0`（`0` = 只看差异；非 `all` 为只读折叠视图） |
+| | `FONT_SIZE_RANGE` | 10–24px（步长 1，默认 14px） |
+| | `STATUS_CLEAR_MS` | 4000（状态行自清） |
 | | `HOME_ID` | `home`（首页常驻标签的保留标识，恒居 `panes.primary[0]`） |
 | | `LAYOUT_VERSION` | 3（`toolbox:tabs` 值结构版本，见 §8.1） |
 | | `TAB_SCROLL_RATIO` | 0.8（滚动按钮一次滚动「一屏」的比例） |

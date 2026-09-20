@@ -1,0 +1,562 @@
+/**
+ * 《文本对比》私有样式
+ * ------------------------------------------------------------------
+ * 约定（docs/DESIGN.md §9.5）：
+ *   - 选择器**一律**带 `.td-*` 前缀（标签工作台会同页加载多个工具的样式）；
+ *   - 只引用 tokens.css 的令牌，不硬编码色值与字号（字号由 `--td-font-size` 变量驱动，值来自参数）；
+ *   - 唯一允许的通用选择器：文件末尾的 `[hidden]` 兜底。
+ */
+
+/* ── 状态行 ───────────────────────────────────────────── */
+.td-status {
+  min-height: 20px;
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.td-status[data-tone="ok"] {
+  color: var(--ok);
+}
+
+.td-status[data-tone="warn"] {
+  color: var(--warn);
+}
+
+.td-status[data-tone="danger"] {
+  color: var(--danger);
+}
+
+/* ── 工具条 / 导航条 ──────────────────────────────────── */
+.td-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--bg-inset);
+}
+
+.td-bar + .td-bar {
+  margin-top: var(--sp-2);
+}
+
+.td-bar__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* 标签在上、控件在下：换行时二者不会被拆散（对齐约定见 §14.8 的同源要求） */
+.td-bar__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.td-bar__field > .select,
+.td-bar__field > .input {
+  min-height: 34px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  font-size: var(--fs-sm);
+}
+
+.td-bar__field .td-bar__label {
+  display: block;
+}
+
+.td-bar__spacer {
+  flex: 1 1 auto;
+}
+
+.td-bar__label {
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-label);
+  color: var(--text-muted);
+}
+
+/* 视图切换（私有分段按钮，不复用外壳 .tabstrip） */
+.td-views {
+  display: inline-flex;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.td-view-btn {
+  padding: 6px var(--sp-3);
+  border: none;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.td-view-btn + .td-view-btn {
+  border-left: 1px solid var(--hairline);
+}
+
+.td-view-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-body);
+}
+
+.td-view-btn.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: var(--fw-medium);
+}
+
+.td-view-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ── 统计 ─────────────────────────────────────────────── */
+.td-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: var(--sp-2);
+  max-width: 760px;
+  margin-top: var(--sp-3);
+}
+
+.td-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--bg-inset);
+}
+
+.td-stat__value {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.td-stat__label {
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-label);
+  color: var(--text-muted);
+}
+
+.td-stat--insert .td-stat__value {
+  color: var(--ok);
+}
+
+.td-stat--delete .td-stat__value {
+  color: var(--danger);
+}
+
+.td-stat--modify .td-stat__value {
+  color: var(--warn);
+}
+
+.td-summary {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* ── 主区与两栏 ───────────────────────────────────────── */
+.td-main {
+  margin-top: var(--sp-3);
+}
+
+.td-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+  gap: 0;
+}
+
+.td-split__divider {
+  background: var(--hairline);
+}
+
+.td-single {
+  display: block;
+}
+
+.td-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.td-pane + .td-pane {
+  padding-left: var(--sp-3);
+}
+
+.td-pane__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--bg-inset);
+}
+
+.td-pane__title {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-strong);
+}
+
+/* 拖拽投放态 */
+.td-pane.is-drop {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  background: var(--accent-soft);
+}
+
+/* ── 搜索条 ───────────────────────────────────────────── */
+.td-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--bg-surface);
+}
+
+.td-search .input {
+  width: auto;
+  flex: 1 1 140px;
+  min-height: 32px;
+  padding: 6px var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+.td-search__count {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 编辑器表面：行号槽 + 高亮层 + 透明 textarea ───────── */
+.td-editor {
+  --td-line-height: 1.6;
+  --td-sbw: 0px;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  max-height: 62vh;
+  overflow: auto;
+  border: 1px solid var(--hairline);
+  border-top: none;
+  background: var(--bg-surface);
+}
+
+.td-editor:focus-within {
+  border-color: var(--accent);
+}
+
+.td-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: 0 0 auto;
+  min-width: 56px;
+  padding: var(--sp-3) var(--sp-2) var(--sp-6);
+  border-right: 1px solid var(--hairline);
+  background: var(--bg-inset);
+  font-family: var(--font-mono);
+  font-size: var(--td-font-size, 14px);
+  line-height: var(--td-line-height);
+  text-align: right;
+  user-select: none;
+}
+
+.td-gutter__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: var(--sp-1);
+  white-space: pre;
+}
+
+.td-gutter__mark {
+  width: 1ch;
+  text-align: center;
+  font-weight: var(--fw-semibold);
+  color: var(--text-faint);
+}
+
+.td-gutter__num {
+  min-width: 3ch;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.td-surface {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.td-layer,
+.td-input {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4) var(--sp-6);
+  border: 0;
+  font-family: var(--font-mono);
+  font-size: var(--td-font-size, 14px);
+  line-height: var(--td-line-height);
+  tab-size: 4;
+  white-space: pre;
+}
+
+.td-layer {
+  display: block;
+  min-width: 100%;
+  color: var(--text-body);
+  pointer-events: none;
+}
+
+/* 透明输入的文本不可见（字形由高亮层绘制），保留光标与选区 */
+.td-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  resize: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text-strong);
+  outline: none;
+}
+
+.td-input::selection {
+  background: var(--accent-soft);
+}
+
+/* 软换行：层与输入同时换行，横向不再出现滚动条 */
+[data-wrap="on"] .td-layer,
+[data-wrap="on"] .td-input {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+[data-wrap="on"] .td-editor {
+  overflow-x: hidden;
+}
+
+/* ── 行 ───────────────────────────────────────────────── */
+.td-row {
+  display: block;
+  min-height: 1.6em;
+}
+
+.td-row__prefix {
+  display: inline-block;
+  width: 2ch;
+  color: var(--text-faint);
+  font-weight: var(--fw-semibold);
+}
+
+/* 行级差异：底色 + 左侧标记条 + 行号符号（不只靠颜色） */
+.td-row--insert {
+  background: var(--ok-soft);
+  box-shadow: inset 3px 0 0 0 var(--ok);
+}
+
+.td-row--delete {
+  background: var(--danger-soft);
+  box-shadow: inset 3px 0 0 0 var(--danger);
+}
+
+.td-row--modify {
+  background: var(--warn-soft);
+  box-shadow: inset 3px 0 0 0 var(--warn);
+}
+
+.td-row--current {
+  box-shadow: inset 4px 0 0 0 var(--accent);
+}
+
+.td-row--placeholder {
+  background: var(--bg-sunken);
+}
+
+.td-gutter__row--insert .td-gutter__mark {
+  color: var(--ok);
+}
+
+.td-gutter__row--delete .td-gutter__mark {
+  color: var(--danger);
+}
+
+.td-gutter__row--modify .td-gutter__mark {
+  color: var(--warn);
+}
+
+.td-gutter__row--current .td-gutter__num {
+  color: var(--accent);
+  font-weight: var(--fw-semibold);
+}
+
+/* ── 词级差异 ─────────────────────────────────────────── */
+.td-seg--changed {
+  background: var(--accent-soft);
+  border-radius: var(--r-xs);
+}
+
+.td-row--delete .td-seg--changed {
+  background: var(--danger-soft);
+  text-decoration: line-through;
+}
+
+.td-row--insert .td-seg--changed {
+  background: var(--ok-soft);
+}
+
+/* ── 搜索命中（与差异底色明显区分）───────────────────── */
+.td-seg--hit {
+  border: 1px solid var(--accent);
+  border-radius: var(--r-xs);
+  background: var(--accent-soft);
+}
+
+.td-seg--hit-current {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+/* ── 语法着色（只改前景色）────────────────────────────── */
+.td-tok-comment {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.td-tok-string {
+  color: var(--ok);
+}
+
+.td-tok-number {
+  color: var(--info);
+}
+
+.td-tok-keyword {
+  color: var(--accent);
+  font-weight: var(--fw-medium);
+}
+
+.td-tok-literal {
+  color: var(--warn);
+}
+
+.td-tok-punct {
+  color: var(--text-muted);
+}
+
+.td-tok-plain {
+  color: inherit;
+}
+
+/* ── 折叠视图 ─────────────────────────────────────────── */
+.td-fold {
+  display: block;
+  width: 100%;
+  padding: var(--sp-1) var(--sp-3);
+  border: none;
+  border-top: 1px dashed var(--hairline);
+  border-bottom: 1px dashed var(--hairline);
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-xs);
+  text-align: center;
+  cursor: pointer;
+}
+
+.td-fold:hover {
+  background: var(--bg-hover);
+  color: var(--text-body);
+}
+
+.td-fold:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ── 图例 ─────────────────────────────────────────────── */
+.td-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.td-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.td-legend__swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--hairline);
+}
+
+.td-legend__swatch--insert {
+  background: var(--ok-soft);
+  border-color: var(--ok);
+}
+
+.td-legend__swatch--delete {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+.td-legend__swatch--modify {
+  background: var(--warn-soft);
+  border-color: var(--warn);
+}
+
+.td-legend__swatch--placeholder {
+  background: var(--bg-sunken);
+}
+
+/* ── 窄栏与动效退化 ───────────────────────────────────── */
+@media (max-width: 900px) {
+  .td-editor {
+    max-height: 48vh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .td-view-btn {
+    transition: none;
+  }
+}
+
+/* ── 唯一允许的通用选择器（§9.5 例外）────────────────── */
+[hidden] {
+  display: none !important;
+}
