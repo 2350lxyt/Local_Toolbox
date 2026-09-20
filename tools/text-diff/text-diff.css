@@ -287,6 +287,7 @@
 
 /* ── 主区与两栏 ───────────────────────────────────────── */
 .td-main {
+  --td-selection: var(--accent-ring);
   margin-top: var(--sp-2);
 }
 
@@ -439,8 +440,19 @@
   outline: none;
 }
 
+/* 选区：透明输入框的字形由高亮层绘制，因此选中文字**必须保持透明**，只用色带表示选区。
+   否则暗色主题下全局 `::selection` 会把选中文字涂成 --accent-contrast（近黑），
+   叠在深色编辑器上完全无法辨认（v1.6.2 修复）。 */
 .td-input::selection {
-  background: var(--accent-soft);
+  background: var(--td-selection);
+  color: transparent;
+}
+
+/* 只读渲染视图（统一 / 折叠）里的文字是真字形，选中时保持浅色文字 + 色带，避免暗色下变成深色 */
+.td-layer::selection,
+.td-gutter::selection {
+  background: var(--td-selection);
+  color: var(--text-strong);
 }
 
 /* 软换行：层与输入同时换行，横向不再出现滚动条 */
