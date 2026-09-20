@@ -3,14 +3,19 @@
  * ------------------------------------------------------------------
  * 约定（docs/DESIGN.md §9.5）：
  *   - 选择器**一律**带 `.td-*` 前缀（标签工作台会同页加载多个工具的样式）；
- *   - 只引用 tokens.css 的令牌，不硬编码色值与字号（字号由 `--td-font-size` 变量驱动，值来自参数）；
+ *   - 只引用 tokens.css 的令牌，不硬编码色值与字号（字号由 `--td-font-size` 驱动，值来自参数）；
  *   - 唯一允许的通用选择器：文件末尾的 `[hidden]` 兜底。
+ *
+ * 布局要点（§15.1）：
+ *   1. 高频操作收进**置顶紧凑工具条**（sticky），行数多、页面滚动时差异导航始终可用；
+ *   2. 不常改的选项收进「更多选项」折叠区，默认收起，把垂直空间让给对比区；
+ *   3. 对比区高度由 JS 实测剩余视口高度（`--td-editor-h`），**滚动只发生在编辑器内部**。
  */
 
 /* ── 状态行 ───────────────────────────────────────────── */
 .td-status {
-  min-height: 20px;
-  margin: 0 0 var(--sp-3);
+  min-height: 18px;
+  margin: 0 0 var(--sp-2);
   font-size: var(--fs-sm);
   color: var(--text-muted);
 }
@@ -27,57 +32,23 @@
   color: var(--danger);
 }
 
-/* ── 工具条 / 导航条 ──────────────────────────────────── */
-.td-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-md);
-  background: var(--bg-inset);
-}
-
-.td-bar + .td-bar {
-  margin-top: var(--sp-2);
-}
-
-.td-bar__group {
+/* ── 置顶工具条 ───────────────────────────────────────── */
+.td-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-1) var(--sp-2);
+  padding: 4px var(--sp-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
 }
 
-/* 标签在上、控件在下：换行时二者不会被拆散（对齐约定见 §14.8 的同源要求） */
-.td-bar__field {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.td-bar__field > .select,
-.td-bar__field > .input {
-  min-height: 34px;
-  padding-top: 6px;
-  padding-bottom: 6px;
-  font-size: var(--fs-sm);
-}
-
-.td-bar__field .td-bar__label {
-  display: block;
-}
-
-.td-bar__spacer {
+.td-topbar__spacer {
   flex: 1 1 auto;
-}
-
-.td-bar__label {
-  font-size: var(--fs-xs);
-  letter-spacing: var(--tracking-label);
-  color: var(--text-muted);
 }
 
 /* 视图切换（私有分段按钮，不复用外壳 .tabstrip） */
@@ -89,12 +60,13 @@
 }
 
 .td-view-btn {
-  padding: 6px var(--sp-3);
+  padding: 4px var(--sp-2);
   border: none;
   background: var(--bg-surface);
   color: var(--text-muted);
   font: inherit;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
+  line-height: 18px;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
@@ -119,61 +91,203 @@
   outline-offset: -2px;
 }
 
-/* ── 统计 ─────────────────────────────────────────────── */
-.td-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
-  gap: var(--sp-2);
-  max-width: 760px;
-  margin-top: var(--sp-3);
+/* 差异导航（高频，与视图切换同处置顶条）*/
+.td-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
 }
 
-.td-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--sp-3);
+.td-nav__count {
+  min-width: 92px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.td-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.td-icon-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-body);
+}
+
+.td-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.td-icon-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* 「更多选项」开关 */
+.td-options-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 4px var(--sp-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-xs);
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.td-options-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-body);
+}
+
+.td-options-toggle[aria-expanded="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.td-options-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ── 折叠区：不常改的选项 ─────────────────────────────── */
+.td-options {
+  margin-top: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
   background: var(--bg-inset);
 }
 
-.td-stat__value {
-  font-family: var(--font-mono);
-  font-size: 22px;
-  font-weight: var(--fw-semibold);
-  line-height: var(--lh-tight);
-  color: var(--text-strong);
-  font-variant-numeric: tabular-nums;
+.td-options__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--sp-3) var(--sp-4);
 }
 
-.td-stat__label {
+.td-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.td-field--wide {
+  grid-column: 1 / -1;
+}
+
+.td-field__label {
   font-size: var(--fs-xs);
   letter-spacing: var(--tracking-label);
   color: var(--text-muted);
 }
 
-.td-stat--insert .td-stat__value {
+.td-field__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+}
+
+.td-field > .input,
+.td-field > .select {
+  min-height: 32px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  font-size: var(--fs-sm);
+}
+
+/* ── 紧凑统计条（一行放下，省出垂直空间）──────────────── */
+.td-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.td-meta__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.td-meta__item b {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.td-meta__item--insert b {
   color: var(--ok);
 }
 
-.td-stat--delete .td-stat__value {
+.td-meta__item--delete b {
   color: var(--danger);
 }
 
-.td-stat--modify .td-stat__value {
+.td-meta__item--modify b {
   color: var(--warn);
 }
 
-.td-summary {
-  margin: var(--sp-2) 0 0;
+/* ── 搜索条（贴在置顶条内，随「左/右栏搜索」按钮展开）── */
+.td-searchbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.td-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.td-search .input {
+  width: 140px;
+  min-height: 26px;
+  padding: 2px var(--sp-2);
   font-size: var(--fs-sm);
+}
+
+.td-search__count {
+  min-width: 44px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
   color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── 主区与两栏 ───────────────────────────────────────── */
 .td-main {
-  margin-top: var(--sp-3);
+  margin-top: var(--sp-2);
 }
 
 .td-split {
@@ -205,16 +319,22 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
+  padding: 3px var(--sp-2);
   border-bottom: 1px solid var(--hairline);
   background: var(--bg-inset);
 }
 
 .td-pane__title {
   margin: 0;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   font-weight: var(--fw-medium);
   color: var(--text-strong);
+}
+
+.td-pane__head .btn {
+  padding: 2px var(--sp-2);
+  font-size: var(--fs-xs);
+  line-height: 18px;
 }
 
 /* 拖拽投放态 */
@@ -224,40 +344,14 @@
   background: var(--accent-soft);
 }
 
-/* ── 搜索条 ───────────────────────────────────────────── */
-.td-search {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
-  border-bottom: 1px solid var(--hairline);
-  background: var(--bg-surface);
-}
-
-.td-search .input {
-  width: auto;
-  flex: 1 1 140px;
-  min-height: 32px;
-  padding: 6px var(--sp-2);
-  font-size: var(--fs-sm);
-}
-
-.td-search__count {
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ── 编辑器表面：行号槽 + 高亮层 + 透明 textarea ───────── */
+/* ── 编辑器表面：定高 + 内部滚动 ──────────────────────── */
 .td-editor {
   --td-line-height: 1.6;
-  --td-sbw: 0px;
   position: relative;
   display: flex;
   align-items: flex-start;
-  max-height: 62vh;
+  /* 高度由 JS 实测剩余视口高度写入；CSS 兜底值保证 JS 未执行时也可用 */
+  height: var(--td-editor-h, 420px);
   overflow: auto;
   border: 1px solid var(--hairline);
   border-top: none;
@@ -476,7 +570,7 @@
 .td-fold {
   display: block;
   width: 100%;
-  padding: var(--sp-1) var(--sp-3);
+  padding: 2px var(--sp-3);
   border: none;
   border-top: 1px dashed var(--hairline);
   border-bottom: 1px dashed var(--hairline);
@@ -498,15 +592,15 @@
   outline-offset: -2px;
 }
 
-/* ── 图例 ─────────────────────────────────────────────── */
+/* ── 图例（放进折叠区，不占主视线）───────────────────── */
 .td-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-3);
+  gap: var(--sp-2) var(--sp-3);
   margin: var(--sp-3) 0 0;
   padding: 0;
   list-style: none;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   color: var(--text-muted);
 }
 
@@ -544,14 +638,20 @@
 }
 
 /* ── 窄栏与动效退化 ───────────────────────────────────── */
-@media (max-width: 900px) {
-  .td-editor {
-    max-height: 48vh;
+@media (max-width: 720px) {
+  .td-topbar {
+    gap: var(--sp-1) var(--sp-2);
+  }
+
+  .td-nav__count {
+    min-width: 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .td-view-btn {
+  .td-view-btn,
+  .td-icon-btn,
+  .td-options-toggle {
     transition: none;
   }
 }

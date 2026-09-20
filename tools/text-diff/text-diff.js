@@ -62,102 +62,100 @@ const TEMPLATE = `
   </div>
 </div>
 
-<div class="td-bar">
-  <div class="td-bar__field">
-    <span class="td-bar__label">视图</span>
-    <div class="td-views" role="group" aria-label="视图切换">
-      <button class="td-view-btn" type="button" data-view="auto">自动</button>
-      <button class="td-view-btn" type="button" data-view="side">并排</button>
-      <button class="td-view-btn" type="button" data-view="unified">统一</button>
+<!-- 置顶紧凑工具条：只放高频操作（视图切换 / 差异导航 / 搜索），选项收进「更多选项」 -->
+<div class="td-topbar" data-topbar>
+  <div class="td-views" role="group" aria-label="视图切换">
+    <button class="td-view-btn" type="button" data-view="auto">自动</button>
+    <button class="td-view-btn" type="button" data-view="side">并排</button>
+    <button class="td-view-btn" type="button" data-view="unified">统一</button>
+  </div>
+
+  <div class="td-nav" role="group" aria-label="差异导航">
+    <button class="td-icon-btn" type="button" data-action="prev-diff" title="上一个差异（Shift + F7）" aria-label="上一个差异">__I_UP__</button>
+    <button class="td-icon-btn" type="button" data-action="next-diff" title="下一个差异（F7）" aria-label="下一个差异">__I_DOWN__</button>
+    <span class="td-nav__count" data-diff-count role="status">无差异</span>
+  </div>
+
+  <span class="td-topbar__spacer"></span>
+
+  <div class="td-searchbar" data-search-bar hidden>
+    <div class="td-search" data-search="left" hidden>
+      <input class="input" type="search" data-search-input="left" aria-label="在左栏搜索" placeholder="左栏查找…" />
+      <label class="checkbox"><input type="checkbox" data-search-case="left" /><span>Aa</span></label>
+      <label class="checkbox"><input type="checkbox" data-search-word="left" /><span>词</span></label>
+      <button class="td-icon-btn" type="button" data-action="search-prev" data-side="left" title="上一个匹配（Shift + Enter）" aria-label="左栏上一个匹配">__I_UP__</button>
+      <button class="td-icon-btn" type="button" data-action="search-next" data-side="left" title="下一个匹配（Enter）" aria-label="左栏下一个匹配">__I_DOWN__</button>
+      <span class="td-search__count" data-search-count="left" role="status">0 / 0</span>
+      <button class="td-icon-btn" type="button" data-action="search-close" data-side="left" title="关闭左栏搜索" aria-label="关闭左栏搜索">__I_CLOSE__</button>
+    </div>
+
+    <div class="td-search" data-search="right" hidden>
+      <input class="input" type="search" data-search-input="right" aria-label="在右栏搜索" placeholder="右栏查找…" />
+      <label class="checkbox"><input type="checkbox" data-search-case="right" /><span>Aa</span></label>
+      <label class="checkbox"><input type="checkbox" data-search-word="right" /><span>词</span></label>
+      <button class="td-icon-btn" type="button" data-action="search-prev" data-side="right" title="上一个匹配（Shift + Enter）" aria-label="右栏上一个匹配">__I_UP__</button>
+      <button class="td-icon-btn" type="button" data-action="search-next" data-side="right" title="下一个匹配（Enter）" aria-label="右栏下一个匹配">__I_DOWN__</button>
+      <span class="td-search__count" data-search-count="right" role="status">0 / 0</span>
+      <button class="td-icon-btn" type="button" data-action="search-close" data-side="right" title="关闭右栏搜索" aria-label="关闭右栏搜索">__I_CLOSE__</button>
     </div>
   </div>
 
-  <div class="td-bar__field">
-    <label class="td-bar__label" for="td-context">上下文行数</label>
-    <select class="select" id="td-context" data-role="context"></select>
-  </div>
+  <button class="td-options-toggle" type="button" data-action="toggle-options" aria-expanded="false" aria-controls="td-options">
+    更多选项 __I_DOWN__
+  </button>
+</div>
 
-  <div class="td-bar__field">
-    <label class="td-bar__label" for="td-font">字号（px）</label>
-    <input class="input" type="number" id="td-font" data-role="fontSize" step="1" />
-  </div>
-
-  <div class="td-bar__field">
-    <label class="td-bar__label" for="td-lang">代码高亮语言</label>
-    <select class="select" id="td-lang" data-role="language"></select>
-  </div>
-
-  <span class="td-bar__spacer"></span>
-
-  <div class="td-bar__field">
-    <span class="td-bar__label">显示</span>
-    <div class="td-bar__group">
-      <label class="checkbox"><input type="checkbox" data-role="softWrap" /><span>软换行</span></label>
-      <label class="checkbox"><input type="checkbox" data-role="inlineHighlight" /><span>行内高亮</span></label>
-      <label class="checkbox"><input type="checkbox" data-role="syncScroll" /><span>滚动同步</span></label>
+<!-- 折叠区：不常改的选项（字号 / 语言 / 对比口径 / 显示开关 / 上下文 / 图例） -->
+<div class="td-options" id="td-options" data-options hidden>
+  <div class="td-options__grid">
+    <div class="td-field">
+      <label class="td-field__label" for="td-font">字号（px）</label>
+      <input class="input" type="number" id="td-font" data-role="fontSize" step="1" />
+    </div>
+    <div class="td-field">
+      <label class="td-field__label" for="td-lang">代码高亮语言</label>
+      <select class="select" id="td-lang" data-role="language"></select>
+    </div>
+    <div class="td-field">
+      <label class="td-field__label" for="td-context">上下文行数（折叠相同行）</label>
+      <select class="select" id="td-context" data-role="context"></select>
+    </div>
+    <div class="td-field">
+      <span class="td-field__label">显示</span>
+      <div class="td-field__row">
+        <label class="checkbox"><input type="checkbox" data-role="softWrap" /><span>软换行</span></label>
+        <label class="checkbox"><input type="checkbox" data-role="inlineHighlight" /><span>行内高亮</span></label>
+        <label class="checkbox"><input type="checkbox" data-role="syncScroll" /><span>滚动同步</span></label>
+      </div>
+    </div>
+    <div class="td-field td-field--wide">
+      <span class="td-field__label">对比选项（只影响判定，不改写原文）</span>
+      <div class="td-field__row">
+        <label class="checkbox"><input type="checkbox" data-role="ignoreCase" /><span>忽略大小写</span></label>
+        <label class="checkbox"><input type="checkbox" data-role="ignoreTrailingSpace" /><span>忽略首尾空白</span></label>
+        <label class="checkbox"><input type="checkbox" data-role="ignoreAllSpace" /><span>忽略全部空白</span></label>
+        <label class="checkbox"><input type="checkbox" data-role="ignoreBlankLines" /><span>忽略空行</span></label>
+        <label class="checkbox"><input type="checkbox" data-role="ignoreLineEnding" /><span>忽略行尾符</span></label>
+      </div>
     </div>
   </div>
+
+  <ul class="td-legend">
+    <li class="td-legend__item"><span class="td-legend__swatch td-legend__swatch--insert" aria-hidden="true"></span>新增行（<span class="mono">+</span>）</li>
+    <li class="td-legend__item"><span class="td-legend__swatch td-legend__swatch--delete" aria-hidden="true"></span>删除行（<span class="mono">−</span>）</li>
+    <li class="td-legend__item"><span class="td-legend__swatch td-legend__swatch--modify" aria-hidden="true"></span>修改行（<span class="mono">~</span>，行内底纹为变动词）</li>
+    <li class="td-legend__item"><span class="td-legend__swatch td-legend__swatch--placeholder" aria-hidden="true"></span>无对应行（仅只读视图）</li>
+  </ul>
 </div>
 
-<div class="td-bar">
-  <div class="td-bar__group">
-    <button class="btn btn--ghost" type="button" data-action="prev-diff" title="上一个差异（Shift + F7）" aria-label="上一个差异">__I_UP__ 上一个差异</button>
-    <button class="btn btn--ghost" type="button" data-action="next-diff" title="下一个差异（F7）" aria-label="下一个差异">__I_DOWN__ 下一个差异</button>
-    <span class="td-bar__label" data-diff-count role="status">无差异</span>
-  </div>
-
-  <span class="td-bar__spacer"></span>
-
-  <div class="td-bar__field">
-    <span class="td-bar__label">对比选项</span>
-    <div class="td-bar__group">
-      <label class="checkbox"><input type="checkbox" data-role="ignoreCase" /><span>忽略大小写</span></label>
-      <label class="checkbox"><input type="checkbox" data-role="ignoreTrailingSpace" /><span>忽略首尾空白</span></label>
-      <label class="checkbox"><input type="checkbox" data-role="ignoreAllSpace" /><span>忽略全部空白</span></label>
-      <label class="checkbox"><input type="checkbox" data-role="ignoreBlankLines" /><span>忽略空行</span></label>
-      <label class="checkbox"><input type="checkbox" data-role="ignoreLineEnding" /><span>忽略行尾符</span></label>
-    </div>
-  </div>
+<!-- 紧凑统计条：一行放下四个数字与相似度，省出垂直空间给对比区 -->
+<div class="td-meta">
+  <span class="td-meta__item td-meta__item--insert">新增 <b data-stat="insert">0</b></span>
+  <span class="td-meta__item td-meta__item--delete">删除 <b data-stat="delete">0</b></span>
+  <span class="td-meta__item td-meta__item--modify">修改 <b data-stat="modify">0</b></span>
+  <span class="td-meta__item">相同 <b data-stat="same">0</b></span>
+  <span class="td-meta__item" data-summary></span>
 </div>
-
-<div class="td-bar td-bar--search" data-search-bar hidden>
-  <div class="td-search" data-search="left" hidden>
-    <span class="td-bar__label">左栏搜索</span>
-    <input class="input" type="search" data-search-input="left" aria-label="在左栏搜索" placeholder="在左栏查找…" />
-    <label class="checkbox"><input type="checkbox" data-search-case="left" /><span>区分大小写</span></label>
-    <label class="checkbox"><input type="checkbox" data-search-word="left" /><span>全词</span></label>
-    <button class="btn btn--ghost" type="button" data-action="search-prev" data-side="left">上一个</button>
-    <button class="btn btn--ghost" type="button" data-action="search-next" data-side="left">下一个</button>
-    <button class="btn btn--ghost" type="button" data-action="search-close" data-side="left">关闭</button>
-    <span class="td-search__count" data-search-count="left" role="status">0 / 0</span>
-  </div>
-
-  <div class="td-search" data-search="right" hidden>
-    <span class="td-bar__label">右栏搜索</span>
-    <input class="input" type="search" data-search-input="right" aria-label="在右栏搜索" placeholder="在右栏查找…" />
-    <label class="checkbox"><input type="checkbox" data-search-case="right" /><span>区分大小写</span></label>
-    <label class="checkbox"><input type="checkbox" data-search-word="right" /><span>全词</span></label>
-    <button class="btn btn--ghost" type="button" data-action="search-prev" data-side="right">上一个</button>
-    <button class="btn btn--ghost" type="button" data-action="search-next" data-side="right">下一个</button>
-    <button class="btn btn--ghost" type="button" data-action="search-close" data-side="right">关闭</button>
-    <span class="td-search__count" data-search-count="right" role="status">0 / 0</span>
-  </div>
-</div>
-
-<div class="td-stats">
-  <div class="td-stat td-stat--insert"><span class="td-stat__value" data-stat="insert">0</span><span class="td-stat__label">新增行</span></div>
-  <div class="td-stat td-stat--delete"><span class="td-stat__value" data-stat="delete">0</span><span class="td-stat__label">删除行</span></div>
-  <div class="td-stat td-stat--modify"><span class="td-stat__value" data-stat="modify">0</span><span class="td-stat__label">修改行</span></div>
-  <div class="td-stat"><span class="td-stat__value" data-stat="same">0</span><span class="td-stat__label">相同行</span></div>
-</div>
-<p class="td-summary" data-summary></p>
-
-<ul class="td-legend">
-  <li class="td-legend__item"><span class="td-legend__swatch td-legend__swatch--insert" aria-hidden="true"></span>新增行（<span class="mono">+</span>）</li>
-  <li class="td-legend__item"><span class="td-legend__swatch td-legend__swatch--delete" aria-hidden="true"></span>删除行（<span class="mono">−</span>）</li>
-  <li class="td-legend__item"><span class="td-legend__swatch td-legend__swatch--modify" aria-hidden="true"></span>修改行（<span class="mono">~</span>，行内底纹为变动词）</li>
-  <li class="td-legend__item"><span class="td-legend__swatch td-legend__swatch--placeholder" aria-hidden="true"></span>无对应行（仅只读视图）</li>
-</ul>
 
 <div class="td-main" data-main>
   <div class="td-split" data-view-side>
@@ -214,6 +212,7 @@ const ICON_TOKENS = {
   __I_UP__: ["chevronUp", 15],
   __I_DOWN__: ["chevronDown", 15],
   __I_SEARCH__: ["search", 15],
+  __I_CLOSE__: ["close", 14],
 };
 
 /** 行级差异在行号槽里的符号（不只靠颜色传达） */
@@ -284,6 +283,8 @@ export function init(ctx) {
     layer: { left: el('[data-layer="left"]'), right: el('[data-layer="right"]') },
     input: { left: el('[data-input="left"]'), right: el('[data-input="right"]') },
     searchBar: el("[data-search-bar]"),
+    optionsToggle: el('[data-action="toggle-options"]'),
+    optionsPanel: el("[data-options]"),
     search: { left: el('[data-search="left"]'), right: el('[data-search="right"]') },
     searchInput: { left: el('[data-search-input="left"]'), right: el('[data-search-input="right"]') },
     searchCase: { left: el('[data-search-case="left"]'), right: el('[data-search-case="right"]') },
@@ -733,6 +734,37 @@ export function init(ctx) {
     nodes.searchBar.hidden = nodes.search.left.hidden && nodes.search.right.hidden;
   }
 
+  /**
+   * 让对比区吃满「视口内剩余高度」：页面本身不滚动，滚动只发生在编辑器内部。
+   * 高度由 JS 实测（而非写死 vh 常量），因此选项折叠展开、工具栏换行都能自适应。
+   */
+  function updateEditorHeight() {
+    const activeEditor = nodes.split.hidden ? nodes.rendered.querySelector(".td-editor") : nodes.editor.left;
+    if (!activeEditor) return;
+
+    const scroller = nodes.main.closest(".pane__view");
+    const bottom = scroller ? scroller.getBoundingClientRect().bottom : window.innerHeight;
+    // 面板自身的内边距 + 编辑器下方的一切（面板页脚、外边距、提示行等）都会占用滚动高度，
+    // 因此不用「逐项累加预估」，而是按实测差值一次性收敛（高度与内容底边是 1:1 关系，一次即准）
+    const panel = nodes.main.closest(".tabpanel");
+    const panelPaddingBottom = panel ? parseFloat(window.getComputedStyle(panel).paddingBottom) || 0 : 0;
+    const mainRect = nodes.main.getBoundingClientRect();
+    // main 之下、面板内容底边之上还有面板页脚与外边距；其高度与编辑器高度无关，可实测后一次性扣除
+    const belowMain = panel
+      ? Math.max(0, Math.round(panel.getBoundingClientRect().bottom - panelPaddingBottom - mainRect.bottom))
+      : 0;
+    const target = bottom - panelPaddingBottom - belowMain - 8;
+
+    const current = Number(nodes.main.dataset.editorH || 0);
+    const overflow = Math.round(mainRect.bottom - target);
+    const base = current || Math.round(target - activeEditor.getBoundingClientRect().top);
+    const height = Math.max(280, Math.min(1200, Math.round(base - overflow)));
+
+    if (current === height) return;
+    nodes.main.dataset.editorH = String(height);
+    nodes.main.style.setProperty("--td-editor-h", `${height}px`);
+  }
+
   function renderAll() {
     state.model.left = buildSideModel("left");
     state.model.right = buildSideModel("right");
@@ -752,6 +784,15 @@ export function init(ctx) {
     renderEditor("left");
     renderEditor("right");
     renderReadOnly();
+    updateEditorHeight();
+  }
+
+  /** 「更多选项」折叠区：不常改的选项收进这里，把垂直空间让给对比区 */
+  function toggleOptions(force) {
+    const next = typeof force === "boolean" ? force : nodes.optionsPanel.hidden;
+    nodes.optionsPanel.hidden = !next;
+    nodes.optionsToggle.setAttribute("aria-expanded", String(next));
+    updateEditorHeight();
   }
 
   /* ── 语言 ───────────────────────────────────────────────── */
@@ -975,9 +1016,10 @@ export function init(ctx) {
     });
   });
 
-  /* ── 事件：导航 ─────────────────────────────────────────── */
+  /* ── 事件：导航与「更多选项」────────────────────────────── */
   bind(el('[data-action="prev-diff"]'), "click", () => goToBlock(-1));
   bind(el('[data-action="next-diff"]'), "click", () => goToBlock(1));
+  bind(nodes.optionsToggle, "click", () => toggleOptions());
 
   /* ── 事件：搜索 ─────────────────────────────────────────── */
   qsa('[data-action="open-search"]').forEach((button) => {
