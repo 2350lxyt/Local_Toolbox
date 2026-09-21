@@ -288,7 +288,17 @@
 /* ── 主区与两栏 ───────────────────────────────────────── */
 .td-main {
   --td-selection: var(--accent-ring);
+  /* 行容器：对比区 + 右侧的差异缩略图（缩略图不占高度，只占固定的窄宽度） */
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
   margin-top: var(--sp-2);
+}
+
+.td-split,
+.td-single {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .td-split {
@@ -303,6 +313,65 @@
 
 .td-single {
   display: block;
+}
+
+/* ── 差异缩略图（§15.13）─────────────────────────────────
+   装饰性视觉导航：颜色沿用正文差异令牌，明暗主题自动适配；
+   键盘等价路径是 F7 / Shift+F7 / 上一个下一个差异按钮。 */
+.td-minimap {
+  position: relative;
+  flex: 0 0 auto;
+  width: 14px; /* MINIMAP_WIDTH，与 §15.13 一致 */
+  /* 纵向位置与高度由 JS 按「编辑器区域」实测写入；兜底值保证 JS 未执行时也可见 */
+  height: var(--td-editor-h, 420px);
+  border-radius: var(--r-xs);
+  background: var(--bg-sunken);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  overflow: hidden;
+  cursor: pointer;
+  /* 拖动擦洗时不要触发页面滚动 */
+  touch-action: none;
+}
+
+.td-minimap:hover {
+  box-shadow: inset 0 0 0 1px var(--hairline-strong);
+}
+
+.td-minimap__mark {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  min-height: 2px; /* MINIMAP_MIN_MARK_PX：单行差异不因取整而消失 */
+  border-radius: 1px;
+}
+
+.td-minimap__mark--insert {
+  background: var(--ok);
+}
+
+.td-minimap__mark--delete {
+  background: var(--danger);
+}
+
+.td-minimap__mark--modify {
+  background: var(--warn);
+}
+
+/* 当前差异块：与「第 n / N 处差异」计数一致 */
+.td-minimap__mark.is-current {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* 当前视口范围 */
+.td-minimap__view {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: 1px;
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent-ring);
+  pointer-events: none;
 }
 
 .td-pane {
@@ -381,7 +450,10 @@
 
 .td-gutter__row {
   display: flex;
-  align-items: baseline;
+  /* 软换行下，行号槽的行高会被 JS 同步成该行折行后的高度（§15.5）：
+     此时行号必须贴住**首个视觉行**，因此用顶对齐而非基线对齐
+     （两个子元素字号与行高一致，视觉结果与基线对齐等价，但行变高时不会漂移） */
+  align-items: flex-start;
   justify-content: flex-end;
   gap: var(--sp-1);
   white-space: pre;
@@ -422,7 +494,15 @@
   display: block;
   min-width: 100%;
   color: var(--text-body);
+  /* 可编辑视图：层在透明 textarea 之下，必须让指针事件穿透到 textarea */
   pointer-events: none;
+}
+
+/* 只读渲染视图没有 textarea，层必须自己接收指针事件：
+   否则 pointer-events 会被继承到折叠条按钮上，使「点击折叠条展开」失效（§15.4），
+   只读文字也无法选中（§15.5 的 .td-layer::selection 选区约定将无从生效）。 */
+.td-editor--rendered .td-layer {
+  pointer-events: auto;
 }
 
 /* 透明输入的文本不可见（字形由高亮层绘制），保留光标与选区 */
@@ -520,29 +600,88 @@
   font-weight: var(--fw-semibold);
 }
 
-/* ── 词级差异 ─────────────────────────────────────────── */
-.td-seg--changed {
-  background: var(--accent-soft);
+/* ── 词级差异（v1.6.4）───────────────────────────────────────
+   原先词级标记直接复用所在行的软色，而行底色本身就是同一族的软色：
+   实测色差只有 ΔRGB 10（浅色修改行）/ 35（深色修改行）——
+   浅色主题下几乎同色（等于没有颜色标识），深色主题下同样看不出行内哪里变了。
+   现在改为「同一语义色的实填充 + 2px 实色下缘条」，强度按主题分别定值：
+   浅色主题在白底上必须克制（填充过强会吃掉文字对比度），靠满强度下缘条做精确标识；
+   深色主题在深底上要更实才显色。
+   强度取值以「文字对比度 ≥ 4.5:1（WCAG AA）」为上限，实测值与依据见 §15.5 的表格；
+   改语义色令牌（--ok / --danger / --warn）时必须重算该表。
+   硬性约束：只改底色与下缘条 —— 前景色归语法着色（§15.6），
+   字重 / 字号 / 边框 / 内边距会改变行内盒宽度、破坏与透明 textarea 的度量对齐（§15.5）。 */
+.td-row--insert {
+  --td-word-bar: var(--ok);
+  --td-word-soft: var(--ok-soft);
+  --td-word-fill: 24%;
+}
+
+.td-row--delete {
+  --td-word-bar: var(--danger);
+  --td-word-soft: var(--danger-soft);
+  --td-word-fill: 16%;
+}
+
+.td-row--modify,
+.td-legend__swatch--word {
+  --td-word-bar: var(--warn);
+  --td-word-soft: var(--warn-soft);
+  --td-word-fill: 20%;
+}
+
+/* 视觉配方：词级片段与图例样例共用，避免两处漂移 */
+.td-seg--changed,
+.td-legend__swatch--word {
+  /* 兜底（不支持 color-mix 时）：沿用该行语义软色，仍靠下缘实色条标识 */
+  background: var(--td-word-soft, var(--warn-soft));
+  /* 折行的长片段在每一行各画一条下缘条（否则只在整段末尾出现） */
+  box-shadow: inset 0 -2px 0 0 var(--td-word-bar, var(--warn));
+  box-decoration-break: clone;
   border-radius: var(--r-xs);
+}
+
+@supports (background: color-mix(in srgb, red 50%, transparent)) {
+  .td-seg--changed,
+  .td-legend__swatch--word {
+    background: color-mix(in srgb, var(--td-word-bar, var(--warn)) var(--td-word-fill, 20%), transparent);
+  }
+}
+
+/* 深色主题：软色在深底上会被吞掉，需要更实的不透明度（数值依据见 §15.5） */
+:root[data-theme="dark"] .td-row--insert {
+  --td-word-fill: 34%;
+}
+
+:root[data-theme="dark"] .td-row--delete {
+  --td-word-fill: 44%;
+}
+
+:root[data-theme="dark"] .td-row--modify,
+:root[data-theme="dark"] .td-legend__swatch--word {
+  --td-word-fill: 32%;
 }
 
 .td-row--delete .td-seg--changed {
-  background: var(--danger-soft);
   text-decoration: line-through;
 }
 
-.td-row--insert .td-seg--changed {
-  background: var(--ok-soft);
-}
-
-/* ── 搜索命中（与差异底色明显区分）───────────────────── */
-.td-seg--hit {
-  border: 1px solid var(--accent);
+/* ── 搜索命中（与差异底色明显区分）─────────────────────
+   两条硬性要求：
+   ① 选择器写成 `.td-seg.td-seg--hit*`（两个类，特异性更高）：语法着色 `.td-tok-*` 与
+      `.td-tok-plain { color: inherit }` 都是单类选择器且出现在本段之后，同特异性靠源码顺序时
+      会**盖掉命中的颜色**，使「当前命中」的 `--accent-contrast` 文字变成继承色
+      （浅色主题下实测只有 1.41:1，几乎不可读）。
+   ② 外框必须用 **outline**（不参与布局）：行内 `border` 会加宽行内盒 ⇒ 高亮层里命中之后的文字
+      整体右移（每个命中 +2px、同行多个命中累积），与透明 textarea 的文字错开（§15.5、v1.6.5 修复）。 */
+.td-seg.td-seg--hit {
+  outline: 1px solid var(--accent);
+  outline-offset: 0;
   border-radius: var(--r-xs);
   background: var(--accent-soft);
 }
 
-.td-seg--hit-current {
+.td-seg.td-seg--hit-current {
   background: var(--accent);
   color: var(--accent-contrast);
 }

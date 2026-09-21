@@ -41,6 +41,18 @@ const DEBOUNCE_MS = 180;
 const STATUS_CLEAR_MS = 4000;
 /** 单次渲染最多做多少行的词级细化（避免超大差异把渲染拖慢） */
 const MAX_WORD_DIFF_ROWS = 600;
+/**
+ * 差异缩略图宽度（px）。
+ * 实际宽度由 CSS 决定（`.td-minimap { width: 14px }`，CSS 无法引用 JS 常量），
+ * 这里保留常量是为了与 §15.13 / 附录 B 的登记一致：**两处需同时维护**。
+ */
+const MINIMAP_WIDTH = 14;
+/** 单个差异标记的最小高度：保证只有一行的差异不因取整而消失 */
+const MINIMAP_MIN_MARK_PX = 2;
+/** 差异块超过此数则把相邻标记聚合为连续色带，避免上万个 DOM 节点 */
+const MINIMAP_MAX_MARKS = 400;
+/** 跳转后目标行落在可视区的纵向位置（1/3 处，视线更自然） */
+const SCROLL_ANCHOR_RATIO = 1 / 3;
 
 /** 按实例推导配置键（§8.1：serial <= 1 沿用默认键） */
 function sessionKeyOf(instance) {
@@ -143,7 +155,8 @@ const TEMPLATE = `
   <ul class="td-legend">
     <li class="td-legend__item"><span class="td-legend__swatch td-legend__swatch--insert" aria-hidden="true"></span>新增行（<span class="mono">+</span>）</li>
     <li class="td-legend__item"><span class="td-legend__swatch td-legend__swatch--delete" aria-hidden="true"></span>删除行（<span class="mono">−</span>）</li>
-    <li class="td-legend__item"><span class="td-legend__swatch td-legend__swatch--modify" aria-hidden="true"></span>修改行（<span class="mono">~</span>，行内底纹为变动词）</li>
+    <li class="td-legend__item"><span class="td-legend__swatch td-legend__swatch--modify" aria-hidden="true"></span>修改行（<span class="mono">~</span>）</li>
+    <li class="td-legend__item"><span class="td-legend__swatch td-legend__swatch--word" aria-hidden="true"></span>行内变动的词（加强底纹 + 下缘实色条）</li>
     <li class="td-legend__item"><span class="td-legend__swatch td-legend__swatch--placeholder" aria-hidden="true"></span>无对应行（仅只读视图）</li>
   </ul>
 </div>
@@ -203,6 +216,9 @@ const TEMPLATE = `
     </div>
     <p class="field__hint" data-rendered-note></p>
   </div>
+
+  <!-- 差异缩略图（§15.13）：装饰性视觉导航，键盘等价路径是 F7 / 上一个下一个差异 -->
+  <div class="td-minimap" data-minimap aria-hidden="true"></div>
 </div>
 `;
 
@@ -278,6 +294,7 @@ export function init(ctx) {
     renderedLayer: el('[data-layer="rendered"]'),
     renderedNote: el("[data-rendered-note]"),
     main: el("[data-main]"),
+    minimap: el("[data-minimap]"),
     editor: { left: el('[data-editor="left"]'), right: el('[data-editor="right"]') },
     gutter: { left: el('[data-gutter="left"]'), right: el('[data-gutter="right"]') },
     layer: { left: el('[data-layer="left"]'), right: el('[data-layer="right"]') },
@@ -294,6 +311,9 @@ export function init(ctx) {
   };
 
   if (!nodes.split || !nodes.input.left || !nodes.input.right || !nodes.renderedLayer) return () => {};
+
+  /** 只读渲染视图的滚动容器（与并排的两栏不同，它没有 textarea） */
+  nodes.renderedEditor = nodes.rendered.querySelector(".td-editor");
 
   /* ── 资源池 ─────────────────────────────────────────────── */
   const timers = { debounce: 0, status: 0 };
@@ -318,9 +338,28 @@ export function init(ctx) {
     lineOfRow: { left: [], right: [] },
     currentBlock: -1,
     expanded: new Set(),
+    /** 当前只读视图里「被折叠区间」的行范围（缩略图点进去时用于先展开再滚动，§15.13） */
+    foldGaps: [],
     search: { left: { hits: [], index: -1 }, right: { hits: [], index: -1 } },
     syncing: false,
     renderRaf: 0,
+    layoutRaf: 0,
+    viewportRaf: 0,
+    jumpRaf: 0,
+    syncHoldRaf: 0,
+    /**
+     * 行号槽行高同步过的「层宽度」：宽度不变时折行结果不变，避免每次重排都做 O(行数) 的同步。
+     * 注意键必须是**层自己的宽度**而不是容器宽度——缩略图显示/隐藏、竖向滚动条出现都会改变层宽，
+     * 而容器宽度不变（§15.5）。
+     */
+    gutterSyncWidth: { left: -1, right: -1, rendered: -1 },
+    /** 缩略图上一次写入的几何（避免无谓写样式） */
+    minimapTop: -1,
+    minimapHeight: -1,
+    minimapHidden: null,
+    /** 缩略图拖拽状态与最近一次指针位置（拖拽中只滚动，松手才更新导航状态） */
+    dragging: false,
+    pointerRow: null,
     storageWarned: false,
     detected: "",
     focusSide: "left",
@@ -597,6 +636,10 @@ export function init(ctx) {
     });
 
     if (model.lines.length === 0) {
+      // 占位行两侧各来一个：保持「行号槽 ↔ 高亮层按下标 1:1 成对」这一不变量（空侧也不破例，
+      // 行高同步依赖它；行号槽的占位行是空的，视觉上与改动前一致）
+      gutterHtml =
+        '<div class="td-gutter__row"><span class="td-gutter__mark"></span><span class="td-gutter__num"></span></div>';
       layerHtml = '<div class="td-row"><span class="td-seg td-tok-plain">（空）</span></div>';
     }
 
@@ -615,6 +658,8 @@ export function init(ctx) {
     const right = state.model.right;
     const segments = foldRows(state.result.rows, state.config.context, state.expanded);
     const renderable = segments.reduce((sum, segment) => sum + (segment.type === "gap" ? 1 : segment.rows.length), 0);
+
+    state.foldGaps = [];
 
     if (renderable > MAX_FOLD_RENDER_ROWS) {
       nodes.renderedNote.textContent = `折叠视图需渲染约 ${renderable} 行，超过上限 ${MAX_FOLD_RENDER_ROWS} 行；请把「上下文行数」切到「只看差异」或缩小输入。`;
@@ -649,6 +694,8 @@ export function init(ctx) {
 
     segments.forEach((segment) => {
       if (segment.type === "gap") {
+        // 记录折叠区间的行范围：缩略图点进这段时要先展开再滚动（§15.13）
+        state.foldGaps.push({ key: segment.key, start: sourceRow, end: sourceRow + segment.count });
         gutterHtml += `<div class="td-gutter__row" data-row="${sourceRow}"><span class="td-gutter__mark"></span><span class="td-gutter__num"></span></div>`;
         layerHtml += `<div class="td-row td-row--placeholder" data-row="${sourceRow}"><button class="td-fold" type="button" data-fold="${escapeHtml(segment.key)}" aria-expanded="false">⋯ 折叠 ${segment.count} 行相同内容（点击展开）⋯</button></div>`;
         sourceRow += segment.count;
@@ -702,8 +749,10 @@ export function init(ctx) {
       nodes.diffCount.textContent = "两侧内容一致";
       return;
     }
+    // 差异过多时缩略图会聚合显示，就在计数旁说明，避免用户以为漏画了标记
+    const suffix = total > MINIMAP_MAX_MARKS ? "（缩略图已聚合）" : "";
     nodes.diffCount.textContent =
-      state.currentBlock < 0 ? `共 ${total} 处差异` : `第 ${state.currentBlock + 1} / ${total} 处差异`;
+      state.currentBlock < 0 ? `共 ${total} 处差异${suffix}` : `第 ${state.currentBlock + 1} / ${total} 处差异`;
   }
 
   function renderViewSwitch() {
@@ -734,12 +783,92 @@ export function init(ctx) {
     nodes.searchBar.hidden = nodes.search.left.hidden && nodes.search.right.hidden;
   }
 
+  /* ── 行号槽对齐（软换行，§15.5 硬性）────────────────────── */
+  /**
+   * 修复「软换行下行号错位」。
+   * 行号槽与高亮层是**两列独立 DOM**：长行只在层里折行（该行因此变高），行号槽那一行恒为单行高，
+   * 于是从第一条折行的行开始，行号会**逐行累积错位**。
+   * 两列严格按索引 1:1 成对（唯一可依赖的不变量），故按下标配对同步行高即可，无需重构 DOM
+   * （重构会丢掉行号槽整列底色与 sticky 左固定、以及只读视图的 data-row 导航语义）。
+   * @param {boolean} force 刚重建过行元素时必须同步；否则仅在容器宽度变化时才需要（宽度不变 → 行高不变）
+   */
+  function syncGutterHeights(force) {
+    const pairs = [
+      ["left", nodes.gutter.left, nodes.layer.left],
+      ["right", nodes.gutter.right, nodes.layer.right],
+      ["rendered", nodes.renderedGutter, nodes.renderedLayer],
+    ];
+
+    if (!state.config.softWrap) {
+      // 关闭软换行时各行等高等宽，无需同步（行元素每次渲染都是新建的，不会残留上次的行高）
+      pairs.forEach(([key]) => {
+        state.gutterSyncWidth[key] = -1;
+      });
+      return;
+    }
+
+    pairs.forEach(([key, gutter, layer]) => {
+      // 另一档视图不可见时行高为 0，跳过，避免把 0 写进行号槽
+      if (!gutter || !layer || layer.offsetParent === null) {
+        state.gutterSyncWidth[key] = -1;
+        return;
+      }
+      const width = layer.clientWidth;
+      if (!force && width === state.gutterSyncWidth[key]) return;
+      state.gutterSyncWidth[key] = width;
+
+      const rows = layer.children;
+      const cells = gutter.children;
+      const heights = new Array(rows.length);
+      // 先集中读完再集中写：读—写交替会触发逐行重排，代价高得多。
+      // 必须取 rect（小数）而不是 offsetHeight（整数）：行高是「1.6 × 字号」这类小数，
+      // 逐行取整会累积成可见错位（长文档下每行差 0.4px，几百行就是上百像素）。
+      for (let index = 0; index < rows.length; index += 1) {
+        heights[index] = rows[index].getBoundingClientRect().height;
+      }
+      // 按「累计高度」回写：每格写的是「到本行为止的目标累计高度 − 已写累计高度」，
+      // 这样即使浏览器对显式高度做子像素取整，两列的累计偏移也严格一致，误差不累积。
+      let target = 0;
+      let written = 0;
+      for (let index = 0; index < heights.length; index += 1) {
+        target += heights[index];
+        const cell = cells[index];
+        // 行号槽与高亮层按下标 1:1 成对；下标错位（异常输入）时放弃本次同步，绝不写出错误高度
+        if (!cell) return;
+        cell.style.height = `${target - written}px`;
+        written = target;
+      }
+    });
+  }
+
+  /** 当前可见对比区的滚动容器（并排取左栏：两侧按行同步，滚动比例一致） */
+  function activeScroller() {
+    return nodes.split.hidden ? nodes.renderedEditor : nodes.editor.left;
+  }
+
+  /**
+   * 轻量重排：只重新实测高度、同步行号槽行高与缩略图几何，**不重建 DOM**。
+   * 容器宽度变化会改变折行结果（行高随之变化），因此不能只在视图自动切换时才响应。
+   */
+  function scheduleLayoutSync() {
+    if (state.layoutRaf) return;
+    state.layoutRaf = window.requestAnimationFrame(() => {
+      state.layoutRaf = 0;
+      updateEditorHeight();
+      // 先定缩略图的几何：它显示/隐藏会改变对比区宽度，进而改变折行结果，
+      // 因此必须在同步行高**之前**完成（否则会按旧宽度量出偏小的行高）。
+      updateMinimapGeometry();
+      syncGutterHeights(false);
+      updateMinimapViewport();
+    });
+  }
+
   /**
    * 让对比区吃满「视口内剩余高度」：页面本身不滚动，滚动只发生在编辑器内部。
    * 高度由 JS 实测（而非写死 vh 常量），因此选项折叠展开、工具栏换行都能自适应。
    */
   function updateEditorHeight() {
-    const activeEditor = nodes.split.hidden ? nodes.rendered.querySelector(".td-editor") : nodes.editor.left;
+    const activeEditor = activeScroller();
     if (!activeEditor) return;
 
     const scroller = nodes.main.closest(".pane__view");
@@ -765,6 +894,278 @@ export function init(ctx) {
     nodes.main.style.setProperty("--td-editor-h", `${height}px`);
   }
 
+  /* ── 差异缩略图（§15.13）────────────────────────────────── */
+  /** 聚合时的着色优先级：修改 > 删除 > 新增（一段里只要含修改就按修改着色） */
+  const MARK_PRIORITY = Object.freeze({ insert: 0, delete: 1, modify: 2 });
+
+  /** 差异块过多时把相邻块并成连续色带，避免上万个 DOM 节点把渲染拖慢 */
+  function minimapMarks(blocks) {
+    if (blocks.length <= MINIMAP_MAX_MARKS) return { marks: blocks, aggregated: false };
+    const step = Math.ceil(blocks.length / MINIMAP_MAX_MARKS);
+    const marks = [];
+    for (let index = 0; index < blocks.length; index += step) {
+      const slice = blocks.slice(index, index + step);
+      let kind = "insert";
+      slice.forEach((block) => {
+        if (MARK_PRIORITY[block.kind] > MARK_PRIORITY[kind]) kind = block.kind;
+      });
+      marks.push({ rowStart: slice[0].rowStart, rowEnd: slice[slice.length - 1].rowEnd, kind });
+    }
+    return { marks, aggregated: true };
+  }
+
+  /** 标记几何：按「对齐行空间」的比例映射（与软换行、滚动位置都无关） */
+  function layoutMinimapMarks() {
+    const track = nodes.minimap;
+    if (!track) return;
+    const total = state.result && state.result.rows ? state.result.rows.length : 0;
+    const height = track.clientHeight;
+    if (!total || height < 1) return;
+
+    Array.from(track.querySelectorAll("[data-mark]")).forEach((mark) => {
+      const start = Number(mark.dataset.rowStart || 0);
+      const end = Number(mark.dataset.rowEnd || start);
+      const top = Math.min(Math.round((start / total) * height), Math.max(0, height - 1));
+      const size = Math.max(MINIMAP_MIN_MARK_PX, Math.round(((end - start + 1) / total) * height));
+      mark.style.top = `${top}px`;
+      mark.style.height = `${Math.max(MINIMAP_MIN_MARK_PX, Math.min(size, height - top))}px`;
+    });
+  }
+
+  function renderMinimap() {
+    const track = nodes.minimap;
+    if (!track) return;
+    const blocks = state.result ? state.result.blocks : [];
+    const current = state.currentBlock >= 0 ? blocks[state.currentBlock] : null;
+    const { marks, aggregated } = minimapMarks(blocks);
+
+    track.dataset.state = blocks.length === 0 ? "clean" : "diff";
+    track.title = aggregated
+      ? `差异缩略图：共 ${blocks.length} 处差异，已聚合显示；点击或拖动可跳转到对应位置`
+      : "差异缩略图：点击或拖动可跳转到对应位置";
+
+    const html = marks
+      .map((block, index) => {
+        const isCurrent = Boolean(current) && block.rowStart <= current.rowEnd && block.rowEnd >= current.rowStart;
+        return `<span class="td-minimap__mark td-minimap__mark--${block.kind}${
+          isCurrent ? " is-current" : ""
+        }" data-mark="${index}" data-row-start="${block.rowStart}" data-row-end="${block.rowEnd}"></span>`;
+      })
+      .join("");
+
+    // 视口带排在最前，标记绘制在其上；每次整体重建，因此视口位置由 updateMinimapViewport 重写
+    track.innerHTML = `<span class="td-minimap__view" data-minimap-view hidden></span>${html}`;
+    layoutMinimapMarks();
+    updateMinimapViewport();
+  }
+
+  /** 缩略图的纵向几何：必须与「编辑器区域」对齐（并排视图里编辑器上方还有面板头，只能实测） */
+  function updateMinimapGeometry() {
+    const track = nodes.minimap;
+    if (!track || !nodes.main) return;
+    const scroller = activeScroller();
+    const mainRect = nodes.main.getBoundingClientRect();
+    const editorRect = scroller ? scroller.getBoundingClientRect() : null;
+    // 对比区不可见（标签未激活）或尚未布局时，没有可对齐的几何
+    const hidden = (nodes.split.hidden && nodes.rendered.hidden) || !editorRect || editorRect.height < 1 || mainRect.height < 1;
+
+    if (hidden) {
+      if (state.minimapHidden !== true) {
+        state.minimapHidden = true;
+        track.hidden = true;
+      }
+      return;
+    }
+
+    const top = Math.round(editorRect.top - mainRect.top);
+    const height = Math.round(editorRect.height);
+    if (state.minimapHidden === false && state.minimapTop === top && state.minimapHeight === height) return;
+    state.minimapHidden = false;
+    state.minimapTop = top;
+    state.minimapHeight = height;
+    track.hidden = false;
+    track.style.marginTop = `${top}px`;
+    track.style.height = `${height}px`;
+    layoutMinimapMarks();
+  }
+
+  /** 视口带：表示当前可见的行范围（并排以左栏的滚动比例代表，两侧按行同步） */
+  function updateMinimapViewport() {
+    const track = nodes.minimap;
+    if (!track || track.hidden) return;
+    const view = track.querySelector("[data-minimap-view]");
+    const scroller = activeScroller();
+    if (!view || !scroller) return;
+
+    const range = scroller.scrollHeight - scroller.clientHeight;
+    const height = track.clientHeight;
+    if (range <= 1 || height < 1) {
+      view.hidden = true;
+      return;
+    }
+    view.hidden = false;
+    view.style.top = `${Math.round((scroller.scrollTop / scroller.scrollHeight) * height)}px`;
+    view.style.height = `${Math.max(6, Math.round((scroller.clientHeight / scroller.scrollHeight) * height))}px`;
+  }
+
+  /** 滚动事件高频触发，视口带更新用 rAF 合并 */
+  function scheduleMinimapViewport() {
+    if (state.viewportRaf) return;
+    state.viewportRaf = window.requestAnimationFrame(() => {
+      state.viewportRaf = 0;
+      updateMinimapViewport();
+    });
+  }
+
+  /* ── 跳转（缩略图点击 / 拖动，§15.13）────────────────────── */
+  /**
+   * 精确滚动：把目标元素放到容器的 1/3 处。
+   * 软换行下行高不等，**禁止**用「行号 × 行高」估算（那是关闭软换行时的算法）。
+   */
+  function scrollElementInto(container, element) {
+    if (!container || !element) return;
+    const containerRect = container.getBoundingClientRect();
+    const elementRect = element.getBoundingClientRect();
+    const offset =
+      container.scrollTop + (elementRect.top - containerRect.top) - container.clientHeight * SCROLL_ANCHOR_RATIO;
+    const max = Math.max(0, container.scrollHeight - container.clientHeight);
+    container.scrollTop = Math.max(0, Math.min(max, offset));
+  }
+
+  /**
+   * 显式跳转期间暂停「被动滚动同步」。
+   * 否则程序化滚动产生的 scroll 事件会让另一侧按行同步（顶部对齐）覆盖掉本侧的 1/3 落点，
+   * 两侧虽仍对齐，但落点位置与用户点击的位置不再对应（§15.13）。
+   * 保持两个帧：程序化滚动引发的 scroll 事件必定在下一帧内派发完毕。
+   */
+  function holdSyncDuringJump() {
+    state.syncing = true;
+    if (state.syncHoldRaf) return;
+    state.syncHoldRaf = window.requestAnimationFrame(() => {
+      state.syncHoldRaf = window.requestAnimationFrame(() => {
+        state.syncHoldRaf = 0;
+        state.syncing = false;
+      });
+    });
+  }
+
+  /** 该侧在某个对齐行上「最近的实际行」（插入行只存在于另一侧，该侧此行为空） */
+  function nearestLineOfRow(side, rowIndex) {
+    const map = state.model[side] ? state.model[side].lineOfRow : null;
+    if (!map) return null;
+    for (let index = rowIndex; index >= 0; index -= 1) {
+      if (map[index] !== null && map[index] !== undefined) return map[index];
+    }
+    for (let index = rowIndex + 1; index < map.length; index += 1) {
+      if (map[index] !== null && map[index] !== undefined) return map[index];
+    }
+    return null;
+  }
+
+  /** 只读视图里找不到精确行时取最近的一个（折叠段的占位行只在段首带 data-row） */
+  function nearestRenderedRow(target) {
+    let best = null;
+    let distance = Infinity;
+    Array.from(nodes.renderedLayer.querySelectorAll("[data-row]")).forEach((row) => {
+      const gap = Math.abs(Number(row.dataset.row) - target);
+      if (gap < distance) {
+        distance = gap;
+        best = row;
+      }
+    });
+    return best;
+  }
+
+  /**
+   * 跳到「对齐行空间」的某一行。
+   * 并排视图两侧一起跳——跳转是**显式指令**，不受「滚动同步」开关影响；
+   * 只读视图里目标行若被折叠，先展开该段再滚动（§15.13）。
+   * @returns {boolean} 是否成功定位
+   */
+  function scrollToRow(rowIndex) {
+    const total = state.result && state.result.rows ? state.result.rows.length : 0;
+    if (total === 0) return false;
+    const target = Math.max(0, Math.min(total - 1, Math.round(rowIndex)));
+
+    if (effectiveView() === "side") {
+      holdSyncDuringJump();
+      let moved = false;
+      ["left", "right"].forEach((side) => {
+        const line = nearestLineOfRow(side, target);
+        if (line === null) return;
+        const element = nodes.layer[side].children[line];
+        if (!element) return;
+        scrollElementInto(nodes.editor[side], element);
+        moved = true;
+      });
+      return moved;
+    }
+
+    const gap = state.foldGaps.find((entry) => target >= entry.start && target < entry.end);
+    if (gap) {
+      state.expanded.add(gap.key);
+      renderAll();
+    }
+
+    const element = nodes.renderedLayer.querySelector(`[data-row="${target}"]`) || nearestRenderedRow(target);
+    if (!element) {
+      setStatus("该位置在当前折叠视图下无法显示，请把「上下文行数」切到「全部」。", "warn");
+      return false;
+    }
+    scrollElementInto(nodes.renderedEditor, element);
+    return true;
+  }
+
+  /** 指针位置 → 对齐行索引 */
+  function rowAtPointer(event) {
+    const track = nodes.minimap;
+    const total = state.result && state.result.rows ? state.result.rows.length : 0;
+    const height = track ? track.clientHeight : 0;
+    if (!track || !total || height < 1) return null;
+    const rect = track.getBoundingClientRect();
+    const offset = event.clientY - rect.top - track.clientTop;
+    const ratio = Math.max(0, Math.min(1, offset / height));
+    return Math.min(total - 1, Math.floor(ratio * total));
+  }
+
+  function blockIndexAtRow(row) {
+    if (!state.result) return -1;
+    return state.result.blocks.findIndex((block) => row >= block.rowStart && row <= block.rowEnd);
+  }
+
+  /** 拖动中只滚动（rAF 合并）；导航状态与重渲染留到松手时做，避免每帧重建 DOM */
+  function scheduleMinimapJump() {
+    if (state.jumpRaf) return;
+    state.jumpRaf = window.requestAnimationFrame(() => {
+      state.jumpRaf = 0;
+      if (state.pointerRow === null) return;
+      scrollToRow(state.pointerRow);
+      updateMinimapViewport();
+    });
+  }
+
+  /** 落点：同步「当前差异块」与计数（与 F7 / 上一个下一个差异保持一致） */
+  function finishMinimapJump() {
+    state.dragging = false;
+    const row = state.pointerRow;
+    state.pointerRow = null;
+    if (row === null) return;
+
+    const index = blockIndexAtRow(row);
+    if (index >= 0) {
+      if (index !== state.currentBlock) {
+        state.currentBlock = index;
+        renderAll();
+      }
+      scrollToRow(row);
+      setStatus(`已跳到第 ${index + 1} / ${state.result.blocks.length} 处差异`, "ok");
+      return;
+    }
+
+    scrollToRow(row);
+    setStatus(`已跳到第 ${row + 1} 行（该位置不是差异行）`, "info");
+  }
+
   function renderAll() {
     state.model.left = buildSideModel("left");
     state.model.right = buildSideModel("right");
@@ -784,7 +1185,12 @@ export function init(ctx) {
     renderEditor("left");
     renderEditor("right");
     renderReadOnly();
+    // 顺序要紧：先按实测高度把对比区定下来，再同步行号槽行高、最后排布缩略图
     updateEditorHeight();
+    syncGutterHeights(true);
+    renderMinimap();
+    updateMinimapGeometry();
+    updateMinimapViewport();
   }
 
   /** 「更多选项」折叠区：不常改的选项收进这里，把垂直空间让给对比区 */
@@ -793,6 +1199,8 @@ export function init(ctx) {
     nodes.optionsPanel.hidden = !next;
     nodes.optionsToggle.setAttribute("aria-expanded", String(next));
     updateEditorHeight();
+    // 展开/收起会改变编辑器的可用高度（进而改变竖向滚动条与层的可用宽度），补一次轻量重排
+    scheduleLayoutSync();
   }
 
   /* ── 语言 ───────────────────────────────────────────────── */
@@ -861,14 +1269,18 @@ export function init(ctx) {
     return null;
   }
 
+  /**
+   * 跳到某一侧的行（差异导航与搜索都走这里）。
+   * 按目标行元素**实测**定位——软换行下行高不等，「行号 × 行高」的估算会偏（§15.5）。
+   */
   function scrollEditorToLine(side, line) {
     if (line === null) return;
-    const editor = nodes.editor[side];
     const model = state.model[side];
     if (!model) return;
-    const rowIndex = model.rowOfLine[line] === undefined ? line : model.rowOfLine[line];
-    const lineHeight = measureLineHeight(side);
-    editor.scrollTop = Math.max(0, rowIndex * lineHeight - editor.clientHeight / 3);
+    const element = nodes.layer[side].children[line];
+    if (!element) return;
+    holdSyncDuringJump();
+    scrollElementInto(nodes.editor[side], element);
   }
 
   function measureLineHeight(side) {
@@ -920,6 +1332,8 @@ export function init(ctx) {
     nodes.searchBar.hidden = false;
     nodes.searchInput[side].focus();
     nodes.searchInput[side].select();
+    // 搜索条会让置顶工具条变高（挤压对比区），对比区高度与缩略图几何要跟上
+    scheduleLayoutSync();
   }
 
   function closeSearch(side) {
@@ -1058,11 +1472,70 @@ export function init(ctx) {
       state.currentBlock = -1;
       scheduleCompute();
     });
-    bind(nodes.editor[side], "scroll", () => syncScrollFrom(side));
+    bind(nodes.editor[side], "scroll", () => {
+      syncScrollFrom(side);
+      scheduleMinimapViewport();
+    });
     bind(nodes.editor[side], "focus", () => {
       state.focusSide = side;
     });
   });
+
+  bind(nodes.renderedEditor, "scroll", scheduleMinimapViewport);
+
+  /* ── 事件：缩略图（点击 / 按住拖动 = 跳转，§15.13）────────── */
+  if (nodes.minimap) {
+    bind(nodes.minimap, "pointerdown", (event) => {
+      if (typeof event.button === "number" && event.button !== 0) return;
+      event.preventDefault();
+      state.dragging = true;
+      state.pointerRow = rowAtPointer(event);
+      if (nodes.minimap.setPointerCapture && typeof event.pointerId === "number") {
+        try {
+          nodes.minimap.setPointerCapture(event.pointerId);
+        } catch (error) {
+          /* 捕获失败不致命：仍按未捕获处理（松手/划过即可结束拖拽） */
+        }
+      }
+      if (state.pointerRow !== null) scrollToRow(state.pointerRow);
+    });
+
+    bind(nodes.minimap, "pointermove", (event) => {
+      if (!state.dragging) return;
+      // 按键已松开却因捕获丢失而收不到 pointerup 时，在这里结束拖拽，
+      // 否则「悬停即擦洗」会一直生效（状态粘滞）
+      if (!event.buttons) {
+        state.dragging = false;
+        state.pointerRow = null;
+        return;
+      }
+      const row = rowAtPointer(event);
+      if (row === null || row === state.pointerRow) return;
+      state.pointerRow = row;
+      scheduleMinimapJump(); // 拖动中只滚动，rAF 合并
+    });
+
+    const releaseCapture = (event) => {
+      if (nodes.minimap.hasPointerCapture && typeof event.pointerId === "number" && nodes.minimap.hasPointerCapture(event.pointerId)) {
+        nodes.minimap.releasePointerCapture(event.pointerId);
+      }
+    };
+
+    bind(nodes.minimap, "pointerup", (event) => {
+      releaseCapture(event);
+      finishMinimapJump();
+    });
+    bind(nodes.minimap, "pointercancel", (event) => {
+      releaseCapture(event);
+      state.dragging = false;
+      state.pointerRow = null;
+    });
+    // 捕获被隐式释放（面板切走、元素被隐藏等）也要复位，避免拖拽状态粘住
+    bind(nodes.minimap, "lostpointercapture", () => {
+      state.dragging = false;
+      state.pointerRow = null;
+    });
+  }
 
   /* ── 事件：折叠展开 ─────────────────────────────────────── */
   bind(nodes.renderedLayer, "click", (event) => {
@@ -1113,9 +1586,15 @@ export function init(ctx) {
   if (typeof window.ResizeObserver === "function") {
     observer = new window.ResizeObserver(() => {
       if (state.config.view === "auto") scheduleRender();
+      // 宽度变化会改变折行结果（行高随之变化），必须重新同步行号槽；
+      // 高度变化要重新实测对比区高度；面板由隐藏变可见（0 → N）也走这里。
+      scheduleLayoutSync();
     });
     observer.observe(nodes.main);
   }
+
+  // 窗口尺寸变化：观察器只看容器的盒子，窗口变矮时容器盒子不变，需要自己补一次实测
+  bind(window, "resize", scheduleLayoutSync);
 
   /* ── 快捷键（带标签工作台焦点守卫，§9.3）────────────────── */
   const inTabsWorkspace = Boolean(root.closest("[data-tabs-workspace]"));
@@ -1160,7 +1639,9 @@ export function init(ctx) {
 
   return () => {
     Object.keys(timers).forEach(clearTimer);
-    if (state.renderRaf) window.cancelAnimationFrame(state.renderRaf);
+    [state.renderRaf, state.layoutRaf, state.viewportRaf, state.jumpRaf, state.syncHoldRaf].forEach((handle) => {
+      if (handle) window.cancelAnimationFrame(handle);
+    });
     if (observer) observer.disconnect();
     disposers.forEach((dispose) => dispose());
     dom.clear(host);
