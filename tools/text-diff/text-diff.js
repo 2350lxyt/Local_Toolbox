@@ -53,6 +53,22 @@ const MINIMAP_MIN_MARK_PX = 2;
 const MINIMAP_MAX_MARKS = 400;
 /** 跳转后目标行落在可视区的纵向位置（1/3 处，视线更自然） */
 const SCROLL_ANCHOR_RATIO = 1 / 3;
+/** 分隔线：命中区宽度（px，与 text-diff.css 的 .td-split__splitter 一致） */
+const SPLITTER_W = 7;
+/** 分隔线：任一侧的最小宽度（px）——拖动时换算成比例下限，避免把某一侧拖到看不见 */
+const MIN_PANE_WIDTH = 160;
+/** 分隔线：键盘调整步长（比例，2%） */
+const SPLIT_STEP = 0.02;
+/** 分隔线：持久化比例的可接受范围（超出回退 50:50） */
+const SPLIT_RATIO_MIN = 0.05;
+const SPLIT_RATIO_MAX = 0.95;
+/** 分隔线：默认与重置值（等宽） */
+const SPLIT_DEFAULT = 0.5;
+/** 拖动分隔线期间：行号槽行高同步的节流间隔（ms）——软换行下该同步是 O(行数)，每帧全量会掉帧 */
+const DRAG_GUTTER_SYNC_MS = 120;
+/** 分隔线比例的存储键与结构版本（§15.11；跨实例共享的纯视图偏好） */
+const SPLIT_KEY = "toolbox:text-diff:split";
+const SPLIT_VERSION = 1;
 
 /** 按实例推导配置键（§8.1：serial <= 1 沿用默认键） */
 function sessionKeyOf(instance) {
@@ -90,27 +106,9 @@ const TEMPLATE = `
 
   <span class="td-topbar__spacer"></span>
 
-  <div class="td-searchbar" data-search-bar hidden>
-    <div class="td-search" data-search="left" hidden>
-      <input class="input" type="search" data-search-input="left" aria-label="在左栏搜索" placeholder="左栏查找…" />
-      <label class="checkbox"><input type="checkbox" data-search-case="left" /><span>Aa</span></label>
-      <label class="checkbox"><input type="checkbox" data-search-word="left" /><span>词</span></label>
-      <button class="td-icon-btn" type="button" data-action="search-prev" data-side="left" title="上一个匹配（Shift + Enter）" aria-label="左栏上一个匹配">__I_UP__</button>
-      <button class="td-icon-btn" type="button" data-action="search-next" data-side="left" title="下一个匹配（Enter）" aria-label="左栏下一个匹配">__I_DOWN__</button>
-      <span class="td-search__count" data-search-count="left" role="status">0 / 0</span>
-      <button class="td-icon-btn" type="button" data-action="search-close" data-side="left" title="关闭左栏搜索" aria-label="关闭左栏搜索">__I_CLOSE__</button>
-    </div>
-
-    <div class="td-search" data-search="right" hidden>
-      <input class="input" type="search" data-search-input="right" aria-label="在右栏搜索" placeholder="右栏查找…" />
-      <label class="checkbox"><input type="checkbox" data-search-case="right" /><span>Aa</span></label>
-      <label class="checkbox"><input type="checkbox" data-search-word="right" /><span>词</span></label>
-      <button class="td-icon-btn" type="button" data-action="search-prev" data-side="right" title="上一个匹配（Shift + Enter）" aria-label="右栏上一个匹配">__I_UP__</button>
-      <button class="td-icon-btn" type="button" data-action="search-next" data-side="right" title="下一个匹配（Enter）" aria-label="右栏下一个匹配">__I_DOWN__</button>
-      <span class="td-search__count" data-search-count="right" role="status">0 / 0</span>
-      <button class="td-icon-btn" type="button" data-action="search-close" data-side="right" title="关闭右栏搜索" aria-label="关闭右栏搜索">__I_CLOSE__</button>
-    </div>
-  </div>
+  <!-- 搜索条槽位：并排视图下两条搜索条各自挂在所属栏的面板头里（§15.7），
+       只读渲染视图（统一 / 折叠）没有面板头，此时临时挂到这个槽位 -->
+  <div class="td-searchbar" data-search-bar hidden></div>
 
   <button class="td-options-toggle" type="button" data-action="toggle-options" aria-expanded="false" aria-controls="td-options">
     更多选项 __I_DOWN__
@@ -178,6 +176,15 @@ const TEMPLATE = `
         <label class="btn btn--ghost" for="td-file-left">__I_UP__ 选择文件…</label>
         <input class="sr-only" type="file" id="td-file-left" data-file="left" />
         <button class="btn btn--ghost" type="button" data-action="open-search" data-side="left" aria-label="搜索左栏">__I_SEARCH__ 搜索</button>
+        <div class="td-search" data-search="left" hidden>
+          <input class="input" type="search" data-search-input="left" aria-label="在左栏搜索" placeholder="左栏查找…" />
+          <label class="checkbox"><input type="checkbox" data-search-case="left" /><span>Aa</span></label>
+          <label class="checkbox"><input type="checkbox" data-search-word="left" /><span>词</span></label>
+          <button class="td-icon-btn" type="button" data-action="search-prev" data-side="left" title="上一个匹配（Shift + Enter）" aria-label="左栏上一个匹配">__I_UP__</button>
+          <button class="td-icon-btn" type="button" data-action="search-next" data-side="left" title="下一个匹配（Enter）" aria-label="左栏下一个匹配">__I_DOWN__</button>
+          <span class="td-search__count" data-search-count="left" role="status">0 / 0</span>
+          <button class="td-icon-btn" type="button" data-action="search-close" data-side="left" title="关闭左栏搜索" aria-label="关闭左栏搜索">__I_CLOSE__</button>
+        </div>
       </div>
       <div class="td-editor" data-editor="left">
         <div class="td-gutter" data-gutter="left" aria-hidden="true"></div>
@@ -188,7 +195,20 @@ const TEMPLATE = `
       </div>
     </section>
 
-    <div class="td-split__divider" aria-hidden="true"></div>
+    <!-- 可拖拽分隔条（§15.1）：视觉是居中 1px 发丝线，命中区 7px（触屏 14px）；
+         键盘可调整（← / → 各 2%，Home / End 到极值，Enter 或双击恢复等宽） -->
+    <div
+      class="td-split__splitter"
+      data-splitter
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="左右栏宽度"
+      title="拖动调整左右栏宽度；双击或回车恢复等宽"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-valuenow="50"
+      tabindex="0"
+    ><span class="td-split__splitter-line" aria-hidden="true"></span></div>
 
     <section class="td-pane" data-side="right">
       <div class="td-pane__head">
@@ -196,6 +216,15 @@ const TEMPLATE = `
         <label class="btn btn--ghost" for="td-file-right">__I_UP__ 选择文件…</label>
         <input class="sr-only" type="file" id="td-file-right" data-file="right" />
         <button class="btn btn--ghost" type="button" data-action="open-search" data-side="right" aria-label="搜索右栏">__I_SEARCH__ 搜索</button>
+        <div class="td-search" data-search="right" hidden>
+          <input class="input" type="search" data-search-input="right" aria-label="在右栏搜索" placeholder="右栏查找…" />
+          <label class="checkbox"><input type="checkbox" data-search-case="right" /><span>Aa</span></label>
+          <label class="checkbox"><input type="checkbox" data-search-word="right" /><span>词</span></label>
+          <button class="td-icon-btn" type="button" data-action="search-prev" data-side="right" title="上一个匹配（Shift + Enter）" aria-label="右栏上一个匹配">__I_UP__</button>
+          <button class="td-icon-btn" type="button" data-action="search-next" data-side="right" title="下一个匹配（Enter）" aria-label="右栏下一个匹配">__I_DOWN__</button>
+          <span class="td-search__count" data-search-count="right" role="status">0 / 0</span>
+          <button class="td-icon-btn" type="button" data-action="search-close" data-side="right" title="关闭右栏搜索" aria-label="关闭右栏搜索">__I_CLOSE__</button>
+        </div>
       </div>
       <div class="td-editor" data-editor="right">
         <div class="td-gutter" data-gutter="right" aria-hidden="true"></div>
@@ -295,6 +324,15 @@ export function init(ctx) {
     renderedNote: el("[data-rendered-note]"),
     main: el("[data-main]"),
     minimap: el("[data-minimap]"),
+    splitter: el("[data-splitter]"),
+    paneHead: {
+      left: el('[data-side="left"] .td-pane__head'),
+      right: el('[data-side="right"] .td-pane__head'),
+    },
+    searchButton: {
+      left: el('[data-action="open-search"][data-side="left"]'),
+      right: el('[data-action="open-search"][data-side="right"]'),
+    },
     editor: { left: el('[data-editor="left"]'), right: el('[data-editor="right"]') },
     gutter: { left: el('[data-gutter="left"]'), right: el('[data-gutter="right"]') },
     layer: { left: el('[data-layer="left"]'), right: el('[data-layer="right"]') },
@@ -342,6 +380,12 @@ export function init(ctx) {
     foldGaps: [],
     search: { left: { hits: [], index: -1 }, right: { hits: [], index: -1 } },
     syncing: false,
+    /** 两栏分隔比例（纯视图状态，不属 §15.2 参数模型；持久化在 toolbox:text-diff:split） */
+    split: SPLIT_DEFAULT,
+    /** 是否正在拖动分隔线（拖动中只改比例 + rAF 重排，不写存储） */
+    splitting: false,
+    /** 拖动中最近一次「行号槽行高同步」的时间戳（节流用，见 DRAG_GUTTER_SYNC_MS） */
+    splitGutterAt: 0,
     renderRaf: 0,
     layoutRaf: 0,
     viewportRaf: 0,
@@ -779,8 +823,8 @@ export function init(ctx) {
       const current = state.search[side].index >= 0 ? state.search[side].index + 1 : 0;
       nodes.searchCount[side].textContent = term ? `${current} / ${hits.length}` : "0 / 0";
     });
-    // 两个搜索条都关闭时不保留空框
-    nodes.searchBar.hidden = nodes.search.left.hidden && nodes.search.right.hidden;
+    // 归属与槽位可见性统一交给 placeSearchBars：并排 → 各自面板头；只读视图 → 顶栏槽位
+    placeSearchBars();
   }
 
   /* ── 行号槽对齐（软换行，§15.5 硬性）────────────────────── */
@@ -1315,6 +1359,198 @@ export function init(ctx) {
     state.syncing = false;
   }
 
+  /* ── 分栏分隔线（§15.1）─────────────────────────────────── */
+  /**
+   * 比例下限 / 上限：按容器**实测宽度**换算，保证任一侧不窄于 MIN_PANE_WIDTH。
+   * 注意左栏 = 比例 × 容器宽，而右栏 = 容器宽 − 左栏 − **分隔条轨道宽**，
+   * 因此上限必须把分隔条宽度算进去（否则右栏会比下限少 7px，触屏下少 14px）。
+   */
+  function splitBounds() {
+    const width = nodes.split ? nodes.split.getBoundingClientRect().width : 0;
+    if (!width) return { min: SPLIT_RATIO_MIN, max: SPLIT_RATIO_MAX };
+    const track = nodes.splitter ? nodes.splitter.getBoundingClientRect().width : 0;
+    const min = Math.min(0.5, Math.max(SPLIT_RATIO_MIN, MIN_PANE_WIDTH / width));
+    const max = Math.max(min, Math.min(SPLIT_RATIO_MAX, 1 - (MIN_PANE_WIDTH + track) / width));
+    return { min, max };
+  }
+
+  function applySplit(bounds) {
+    if (!nodes.split) return;
+    nodes.split.style.setProperty("--td-split-left", `${(state.split * 100).toFixed(2)}%`);
+    if (!nodes.splitter) return;
+    const range = bounds || splitBounds();
+    nodes.splitter.setAttribute("aria-valuenow", String(Math.round(state.split * 100)));
+    // 可达区间随容器宽度变化：播报区间必须与实际能调到的范围一致（否则读屏会报出调不到的值）
+    nodes.splitter.setAttribute("aria-valuemin", String(Math.round(range.min * 100)));
+    nodes.splitter.setAttribute("aria-valuemax", String(Math.round(range.max * 100)));
+  }
+
+  /**
+   * 设置分隔比例（自动夹紧到最小宽度允许的范围）。
+   * @returns {boolean} 比例是否真的改变（避免无谓重排与无谓写存储）
+   */
+  function setSplit(ratio, options = {}) {
+    const bounds = splitBounds();
+    const next = Math.max(bounds.min, Math.min(bounds.max, ratio));
+    if (!Number.isFinite(next) || Math.abs(next - state.split) < 0.0005) return false;
+    state.split = next;
+    applySplit(bounds);
+    // 栏宽变了 → 折行结果、行号槽行高、缩略图几何、对比区高度都要跟着重算
+    if (options.resync !== false) scheduleLayoutSync();
+    return true;
+  }
+
+  /**
+   * 拖动中的重排：对比区高度与缩略图几何每帧跟上（便宜，只读少量几何）；
+   * 「行号槽行高同步」是 O(行数) 且只在软换行下才有意义，因此按 DRAG_GUTTER_SYNC_MS 节流，
+   * 松手时由 endSplitDrag 走一次 scheduleLayoutSync 全量对齐。
+   */
+  function scheduleSplitResync() {
+    if (state.layoutRaf) return;
+    state.layoutRaf = window.requestAnimationFrame(() => {
+      state.layoutRaf = 0;
+      updateEditorHeight();
+      updateMinimapGeometry();
+      updateMinimapViewport();
+      if (!state.config.softWrap) return;
+      const now = Date.now();
+      if (now - state.splitGutterAt < DRAG_GUTTER_SYNC_MS) return;
+      state.splitGutterAt = now;
+      syncGutterHeights(false);
+    });
+  }
+
+  /** 指针位置 → 比例（相对两栏容器） */
+  function splitRatioAt(event) {
+    if (!nodes.split) return null;
+    const rect = nodes.split.getBoundingClientRect();
+    if (!rect.width) return null;
+    return (event.clientX - rect.left) / rect.width;
+  }
+
+  function readStoredSplit() {
+    try {
+      const raw = window.localStorage.getItem(SPLIT_KEY);
+      if (!raw) return SPLIT_DEFAULT;
+      const parsed = JSON.parse(raw);
+      const ratio = parsed && typeof parsed === "object" ? Number(parsed.ratio) : NaN;
+      return Number.isFinite(ratio) && ratio >= SPLIT_RATIO_MIN && ratio <= SPLIT_RATIO_MAX ? ratio : SPLIT_DEFAULT;
+    } catch (error) {
+      return SPLIT_DEFAULT;
+    }
+  }
+
+  function commitSplit() {
+    try {
+      window.localStorage.setItem(
+        SPLIT_KEY,
+        JSON.stringify({ version: SPLIT_VERSION, ratio: Number(state.split.toFixed(4)) })
+      );
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function splitPercentText() {
+    const left = Math.round(state.split * 100);
+    return `左 ${left}% / 右 ${100 - left}%`;
+  }
+
+  /** 键盘 / 双击调整：一次调整即落地存储（与外壳侧栏宽度同做法） */
+  function commitSplitChange(message) {
+    if (!commitSplit()) warnStorageOnce();
+    if (message) setStatus(message, "info");
+  }
+
+  function nudgeSplit(delta) {
+    if (!setSplit(state.split + delta * SPLIT_STEP)) return;
+    commitSplitChange(`分栏比例：${splitPercentText()}`);
+  }
+
+  function moveSplitToBoundary(which) {
+    const bounds = splitBounds();
+    if (!setSplit(which === "min" ? bounds.min : bounds.max)) return;
+    commitSplitChange(`分栏比例：${splitPercentText()}（已到${which === "min" ? "最小" : "最大"}宽度）`);
+  }
+
+  function resetSplit() {
+    if (!setSplit(SPLIT_DEFAULT)) return;
+    commitSplitChange("已恢复等宽分栏（50:50）");
+  }
+
+  function beginSplitDrag(event) {
+    if (!nodes.splitter) return;
+    if (typeof event.button === "number" && event.button !== 0) return;
+    event.preventDefault();
+    // preventDefault 会连带取消鼠标聚焦，这里显式聚焦，松手后即可用方向键微调
+    nodes.splitter.focus();
+    state.splitting = true;
+    // 拖动态挂在**本实例容器**上（不是 html）：多实例互不干扰，且随面板 DOM 一起被清理
+    if (nodes.main) nodes.main.classList.add("is-splitting");
+    if (nodes.splitter.setPointerCapture && typeof event.pointerId === "number") {
+      try {
+        nodes.splitter.setPointerCapture(event.pointerId);
+      } catch (error) {
+        /* 捕获失败不致命：仍可在分隔条上拖动，窗口级 pointerup 兜底复位 */
+      }
+    }
+    const ratio = splitRatioAt(event);
+    if (ratio !== null) setSplit(ratio, { resync: false });
+    scheduleSplitResync();
+  }
+
+  function moveSplitDrag(event) {
+    if (!state.splitting) return;
+    // 按键已松开却因捕获丢失而收不到 pointerup 时在此复位，避免「悬停即拖动」的粘滞状态
+    if (!event.buttons) {
+      endSplitDrag(event, false);
+      return;
+    }
+    const ratio = splitRatioAt(event);
+    if (ratio === null) return;
+    if (setSplit(ratio, { resync: false })) scheduleSplitResync();
+  }
+
+  function endSplitDrag(event, commit) {
+    const wasSplitting = state.splitting;
+    state.splitting = false;
+    if (nodes.main) nodes.main.classList.remove("is-splitting");
+    if (
+      nodes.splitter &&
+      nodes.splitter.hasPointerCapture &&
+      event &&
+      typeof event.pointerId === "number" &&
+      nodes.splitter.hasPointerCapture(event.pointerId)
+    ) {
+      nodes.splitter.releasePointerCapture(event.pointerId);
+    }
+    if (commit !== false && wasSplitting) commitSplitChange(`已调整分栏：${splitPercentText()}（双击分隔线可恢复等宽）`);
+    scheduleLayoutSync();
+  }
+
+  /* ── 搜索条归属（§15.7）─────────────────────────────────── */
+  /**
+   * 并排视图：每栏搜索条挂在**本栏面板头**里（与「搜索」按钮同一行），打开时隐藏该按钮；
+   * 只读渲染视图没有面板头 → 回退到置顶工具条的槽位，且只保留焦点侧那一条（否则又挤在一起）。
+   */
+  function placeSearchBars() {
+    const readOnly = nodes.split.hidden;
+    ["left", "right"].forEach((side) => {
+      const bar = nodes.search[side];
+      const slot = readOnly ? nodes.searchBar : nodes.paneHead[side];
+      if (slot && bar.parentElement !== slot) slot.appendChild(bar);
+      const button = nodes.searchButton[side];
+      if (button) button.hidden = !bar.hidden;
+    });
+    if (!nodes.searchBar) return;
+    nodes.searchBar.hidden = !readOnly;
+    // 只读视图下槽位只显示焦点侧那一条 —— 这是**纯展示层隐藏**（不改 state.search 的开合状态），
+    // 否则切回并排时该侧会落到「搜索条关了、按钮也隐藏了」的不可发现状态。
+    if (readOnly) nodes.searchBar.dataset.focus = state.focusSide === "right" ? "right" : "left";
+    else delete nodes.searchBar.dataset.focus;
+  }
+
   /* ── 搜索 ───────────────────────────────────────────────── */
   /** 当前「焦点所在栏」（以 activeElement 为准，退化到最近一次聚焦的栏） */
   function sideOfActiveElement() {
@@ -1328,17 +1564,20 @@ export function init(ctx) {
 
   function openSearch(side) {
     clearError();
+    state.focusSide = side;
     nodes.search[side].hidden = false;
-    nodes.searchBar.hidden = false;
+    // 归属先落位（并排 → 本栏面板头；只读视图 → 顶栏槽位），否则聚焦的是一个不可见元素
+    placeSearchBars();
     nodes.searchInput[side].focus();
     nodes.searchInput[side].select();
-    // 搜索条会让置顶工具条变高（挤压对比区），对比区高度与缩略图几何要跟上
+    // 搜索条会让面板头或工具条变高（挤压对比区），对比区高度与缩略图几何要跟上
     scheduleLayoutSync();
   }
 
   function closeSearch(side) {
     nodes.search[side].hidden = true;
     state.search[side].index = -1;
+    placeSearchBars();
     scheduleRender();
   }
 
@@ -1435,6 +1674,63 @@ export function init(ctx) {
   bind(el('[data-action="next-diff"]'), "click", () => goToBlock(1));
   bind(nodes.optionsToggle, "click", () => toggleOptions());
 
+  /* ── 事件：分栏分隔线（鼠标 / 触屏 / 触控笔走同一条指针路径，§15.1）── */
+  if (nodes.splitter) {
+    bind(nodes.splitter, "pointerdown", beginSplitDrag);
+    bind(nodes.splitter, "pointermove", moveSplitDrag);
+    bind(nodes.splitter, "pointerup", (event) => endSplitDrag(event, true));
+    bind(nodes.splitter, "pointercancel", (event) => endSplitDrag(event, false));
+    // 捕获被隐式释放（面板切走等）也要复位，避免光标与 user-select 粘住
+    bind(nodes.splitter, "lostpointercapture", () => {
+      state.splitting = false;
+      if (nodes.main) nodes.main.classList.remove("is-splitting");
+    });
+    // 未成功建立捕获时的兜底：指针移出分隔条后再松手，也能结束拖拽
+    // （否则整页会停在 col-resize + 禁选状态，直到指针再次划过分隔条）
+    bind(window, "pointerup", () => {
+      if (state.splitting) endSplitDrag(null, true);
+    });
+    bind(window, "pointercancel", () => {
+      if (state.splitting) endSplitDrag(null, false);
+    });
+    bind(window, "blur", () => {
+      if (state.splitting) endSplitDrag(null, false);
+    });
+    // 拖动中防止误选中正文：捕获期间 selectstart 会被重定向到捕获元素上
+    bind(nodes.splitter, "selectstart", (event) => {
+      if (state.splitting) event.preventDefault();
+    });
+    bind(nodes.splitter, "dblclick", (event) => {
+      event.preventDefault();
+      resetSplit();
+    });
+    bind(nodes.splitter, "keydown", (event) => {
+      switch (event.key) {
+        case "ArrowLeft":
+        case "ArrowUp":
+          nudgeSplit(-1);
+          break;
+        case "ArrowRight":
+        case "ArrowDown":
+          nudgeSplit(1);
+          break;
+        case "Home":
+          moveSplitToBoundary("min");
+          break;
+        case "End":
+          moveSplitToBoundary("max");
+          break;
+        case "Enter":
+        case " ":
+          resetSplit();
+          break;
+        default:
+          return;
+      }
+      event.preventDefault();
+    });
+  }
+
   /* ── 事件：搜索 ─────────────────────────────────────────── */
   qsa('[data-action="open-search"]').forEach((button) => {
     bind(button, "click", () => openSearch(button.dataset.side));
@@ -1460,6 +1756,18 @@ export function init(ctx) {
         stepSearch(side, event.shiftKey ? -1 : 1);
       }
     });
+    bind(nodes.searchInput[side], "focus", () => {
+      // 焦点在哪一栏的搜索条上，就以哪一栏为「焦点侧」（Ctrl+F 与只读视图槽位都依赖它）
+      state.focusSide = side;
+      if (nodes.split.hidden) placeSearchBars();
+    });
+    // 搜索条现在挂在面板头里：拖入文本/文件必须落到输入框（原生行为），
+    // 不得冒泡到面板的 drop 处理器去覆盖整栏正文
+    bind(nodes.search[side], "dragover", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    bind(nodes.search[side], "drop", (event) => event.stopPropagation());
     ["searchCase", "searchWord"].forEach((key) => {
       bind(nodes[key][side], "change", () => commitConfig(readConfig()));
     });
@@ -1611,7 +1919,11 @@ export function init(ctx) {
 
     if ((event.ctrlKey || event.metaKey) && (event.key === "f" || event.key === "F")) {
       event.preventDefault();
-      openSearch(sideOfActiveElement());
+      const side = sideOfActiveElement();
+      // 只读视图没有面板头、两条搜索条都在同一个槽位里：该侧已打开时切到另一侧，
+      // 否则用户在这个视图下无法改搜另一栏（面板头的「搜索」按钮此时不可见）
+      const readOnly = nodes.split.hidden;
+      openSearch(readOnly && !nodes.search[side].hidden ? (side === "left" ? "right" : "left") : side);
       return;
     }
 
@@ -1634,6 +1946,10 @@ export function init(ctx) {
   nodes.fontSize.min = String(FONT_SIZE_MIN);
   nodes.fontSize.max = String(FONT_SIZE_MAX);
   writeConfigToForm(state.config);
+  // 恢复上次的分栏比例（纯视图偏好；非法值已在 readStoredSplit 中回退 50:50）
+  state.split = readStoredSplit();
+  applySplit();
+  placeSearchBars();
   compute();
   setStatus("把两段文本分别粘进两侧，或把文件拖到对应栏即可开始对比。", "info");
 
@@ -1643,6 +1959,10 @@ export function init(ctx) {
       if (handle) window.cancelAnimationFrame(handle);
     });
     if (observer) observer.disconnect();
+    // 若在拖动分隔线途中关闭面板，拖动态必须一起复位
+    // （拖动态类是挂在 nodes.main 上的，随 DOM 一起移除，这里显式复位状态即可）
+    state.splitting = false;
+    if (nodes.main) nodes.main.classList.remove("is-splitting");
     disposers.forEach((dispose) => dispose());
     dom.clear(host);
   };

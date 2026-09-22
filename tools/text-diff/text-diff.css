@@ -4,7 +4,8 @@
  * 约定（docs/DESIGN.md §9.5）：
  *   - 选择器**一律**带 `.td-*` 前缀（标签工作台会同页加载多个工具的样式）；
  *   - 只引用 tokens.css 的令牌，不硬编码色值与字号（字号由 `--td-font-size` 驱动，值来自参数）；
- *   - 唯一允许的通用选择器：文件末尾的 `[hidden]` 兜底。
+ *   - 唯一允许的通用选择器：文件末尾的 `[hidden]` 兜底，以及**拖动分隔线期间**作用域限定在
+ *     `.td-main.is-splitting` 内的 `*`（只为在拖动中压制光标与文本选中，见 §15.1）。
  *
  * 布局要点（§15.1）：
  *   1. 高频操作收进**置顶紧凑工具条**（sticky），行数多、页面滚动时差异导航始终可用；
@@ -262,12 +263,33 @@
   min-width: 0;
 }
 
+/* 只读渲染视图下两条搜索条都在这个槽位里（没有面板头）：
+   只显示焦点侧那一条 —— 纯展示层隐藏，不改搜索条自身的开合状态（见 placeSearchBars） */
+.td-searchbar[data-focus="left"] [data-search="right"],
+.td-searchbar[data-focus="right"] [data-search="left"] {
+  display: none;
+}
+
 .td-search {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-1);
   min-width: 0;
+}
+
+/* 搜索条挂在所属栏的面板头里（§15.7）：可伸缩、必要时折行，不把面板头挤爆 */
+.td-pane__head .td-search {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  margin-left: var(--sp-1);
+}
+
+/* 面板头内的搜索输入框允许收缩：窄栏下先缩输入框、再折行
+   （折行会让面板头变高、对比区高度跳变，能少一次是一次） */
+.td-pane__head .td-search .input {
+  flex: 0 1 140px;
+  min-width: 96px;
 }
 
 .td-search .input {
@@ -303,12 +325,62 @@
 
 .td-split {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+  /* 左栏宽度由 JS 写入的 --td-split-left 决定（默认 50%）；中间是可拖拽分隔条（§15.1） */
+  grid-template-columns: minmax(0, var(--td-split-left, 50%)) var(--td-splitter-w, 7px) minmax(0, 1fr);
   gap: 0;
 }
 
-.td-split__divider {
+/* ── 可拖拽分隔条（§15.1）─────────────────────────────────
+   视觉是居中的 1px 发丝线，但命中区是整条 7px（触屏 14px）——
+   命中区太窄时鼠标与手指都很难命中。
+   拖动中只写比例、不做位置过渡，避免滞后于指针。 */
+.td-split__splitter {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  cursor: col-resize;
+  /* 触屏拖动分隔条时不要触发页面滚动 */
+  touch-action: none;
+}
+
+.td-split__splitter-line {
+  width: 1px;
   background: var(--hairline);
+  transition: width var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+
+.td-split__splitter:hover .td-split__splitter-line,
+.td-split__splitter:focus-visible .td-split__splitter-line {
+  background: var(--accent);
+}
+
+.td-split__splitter:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* 拖动中：发丝线转为强调色并加粗，给出「正在调整」的反馈 */
+.td-main.is-splitting .td-split__splitter-line {
+  width: 2px;
+  background: var(--accent);
+}
+
+/* 拖动期间的光标与禁选：范围收在**本工具的对比区**内（拖动态类挂在 .td-main 上，
+   多实例各拖各的互不干扰、且随面板 DOM 一起清理），不使用 `html *` 这类全局通用选择器。
+   指针若拖出对比区，光标会退回默认样式（可接受）；正文误选中另由 selectstart 兜底。 */
+.td-main.is-splitting,
+.td-main.is-splitting .td-pane,
+.td-main.is-splitting .td-pane * {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* 触屏：命中区放宽到 14px（手指比鼠标需要更大的目标） */
+@media (pointer: coarse) {
+  .td-split {
+    --td-splitter-w: 14px;
+  }
 }
 
 .td-single {
@@ -802,7 +874,8 @@
 @media (prefers-reduced-motion: reduce) {
   .td-view-btn,
   .td-icon-btn,
-  .td-options-toggle {
+  .td-options-toggle,
+  .td-split__splitter-line {
     transition: none;
   }
 }
