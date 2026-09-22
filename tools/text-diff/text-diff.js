@@ -693,6 +693,8 @@ export function init(ctx) {
     if (input.value !== state.text[side]) input.value = state.text[side];
     // 让 textarea 与内容等高，滚动完全由外层 .td-editor 承担
     input.style.height = `${layer.scrollHeight}px`;
+    // 层宽由 CSS 的 `width: max-content`（未软换行时，见 §15.5）原生算好，这里同步 textarea 的宽度，
+    // 保证输入层与高亮层几何一致（光标/选区不错位）
     input.style.width = `${Math.max(layer.scrollWidth, nodes.editor[side].clientWidth - nodes.gutter[side].offsetWidth)}px`;
   }
 
