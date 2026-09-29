@@ -1,0 +1,830 @@
+/**
+ * 《公式计算器》工具私有样式（docs/DESIGN.md §9.5 / §16.1）
+ * ------------------------------------------------------------------
+ * 规则：
+ *   - 选择器**一律带 `fc-` 前缀**，不出现通用选择器（标签工作台会同时加载多个工具的样式）；
+ *   - 颜色 / 间距 / 圆角 / 字号**只引用 tokens.css 的令牌**，明暗两套主题自动适配；
+ *   - 通用组件（`.panel` / `.btn` / `.field` / `.notice` / `.empty` / `.input` 等）直接复用
+ *     `assets/css/tool.css`，**不在此重复实现**，也不向共享样式文件添加本工具样式。
+ */
+
+/* ── 状态行 ─────────────────────────────────────────────── */
+/* 固定高度：状态文字出现 / 消失都不得改变版面高度，否则整页内容会跟着跳（v1.7.3） */
+.fc-status {
+  height: 20px;
+  margin: 0 0 var(--sp-2);
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  line-height: 20px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fc-status[data-tone="ok"] {
+  color: var(--ok);
+}
+
+.fc-status[data-tone="warn"] {
+  color: var(--warn);
+}
+
+.fc-status[data-tone="danger"] {
+  color: var(--danger);
+}
+
+/* ── 公式录入 ───────────────────────────────────────────── */
+.fc-formula {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: flex-start;
+  margin-top: var(--sp-1);
+}
+
+/* 已识别变量的 chips */
+.fc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+/* chip 是**真实按钮**（§7 可聚焦控件）：点按即定位到该变量所在列（§16.4 v1.7.4） */
+.fc-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-1);
+  padding: 2px var(--sp-2);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--bg-inset);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: inherit;
+  cursor: pointer;
+  transition: box-shadow var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.fc-chip:hover {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.fc-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.fc-chip__name {
+  color: var(--text-strong);
+}
+
+.fc-chip__meta {
+  color: var(--text-muted);
+}
+
+.fc-chips__empty {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* ── 面板头：隐私表述 + 齿轮按钮（§8.5 / §16.9，v1.7.3）─── */
+.fc-head-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex: 0 0 auto;
+}
+
+/* 面板头要压住下方正文，弹窗才能浮在它上面 */
+.fc-area-calc .panel__head {
+  position: relative;
+  z-index: 3;
+}
+
+.fc-gear[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* 齿轮弹窗：挂在标题下方，点外部 / Escape 关闭（role=dialog，见 §16.9） */
+.fc-options {
+  position: absolute;
+  top: calc(100% + var(--sp-2));
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 190px;
+  padding: var(--sp-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-2);
+}
+
+.fc-options[hidden] {
+  display: none;
+}
+
+.fc-options__title {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* ── 变量表 ─────────────────────────────────────────────── */
+/* 变量表：**固定高度视口**（内部滚动）。
+   这样增删数据行不改变面板高度，历史记录不会被推着上下移动（§16.1 / §16.9，v1.7.3）。 */
+.fc-table-scroll {
+  margin-top: var(--sp-3);
+  height: var(--fc-table-viewport);
+  overflow: auto;
+  /* v1.7.5：加发丝描边 + 圆角 —— 固定视口留下的空白因此有了边界，不再像一块「空洞」 */
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+
+/* 无变量时的引导块占同样的高度，避免「有变量 ↔ 无变量」切换时也把历史顶走 */
+.fc-area-table .empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--fc-table-viewport);
+}
+
+.fc-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 100%;
+  font-size: var(--fs-sm);
+}
+
+.fc-table th,
+.fc-table td {
+  padding: var(--sp-1) var(--sp-2);
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.fc-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-inset);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  color: var(--text-muted);
+}
+
+.fc-table__cell--index {
+  width: 1%;
+  color: var(--text-faint);
+}
+
+/* 「结果」列吸收剩余宽度并右对齐 ⇒ 结果永远贴在表格最右（v1.7.4）。
+   必须写成 `th.fc-table__cell--result` 这种更高特异性的形式：上方 `.fc-table th, .fc-table td { text-align: left }`
+   的特异性是 (0,1,1)，单写类名 (0,1,0) 会被它压住（右对齐不生效）。 */
+.fc-table th.fc-table__cell--result,
+.fc-table td.fc-table__cell--result {
+  width: 100%;
+  text-align: right;
+  /* v1.7.5：结果列自带内嵌底，与数据列形成「计算列」的视觉分区（选中行时随整行一起被强调底覆盖） */
+  background: var(--bg-inset);
+}
+
+.fc-table tbody tr {
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+/* 斑马纹（v1.7.4）：偶数行铺淡底，多行数据时更好横向扫读；hover 与选中都在它之后，能盖过它 */
+.fc-table tbody tr:nth-child(even) {
+  background: var(--bg-inset);
+}
+
+.fc-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+/* 选中行：**整行**铺低比例强调底 + 第一格左侧强调条，与右栏分步过程一一对应（§16.4） */
+.fc-table tbody tr.is-selected,
+.fc-table tbody tr.is-selected:hover {
+  background: var(--fc-select-tint);
+}
+
+/* 单元格自带 padding，只铺 tr 会露出缝隙，所以 td 也铺一层 */
+.fc-table tbody tr.is-selected td {
+  background: var(--fc-select-tint);
+}
+
+/* 关键：选中行里的输入框必须透明底（已在上方 `.fc-cell .input` 统一设置），
+   否则会把整格的行底色盖住 —— v1.7.3「看上去只有第一格有强调」就是被它挡掉的（v1.7.4 修） */
+.fc-table tbody tr.is-selected td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* 点 chip 定位：目标列短暂高亮（§16.4 v1.7.4）。底色与选中行同档（低比例混色），
+   靠 1px accent 描边给出辨识度，避免为了「看得见」又堆一层高饱和底（v1.7.5） */
+.fc-table th.is-flash,
+.fc-table td.is-flash {
+  background: var(--fc-select-tint);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.fc-pick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 var(--sp-1);
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  background: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.fc-pick:hover {
+  background: var(--bg-active);
+  color: var(--text-strong);
+}
+
+.fc-pick[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-surface);
+}
+
+/* 变量列：**列宽自适应**（v1.7.4）。
+   固定 148px 时「10 / 25」这种短值会留下大片空白 ⇒ 改为按「该列表头文字 + 最小宽度」收缩，
+   长值在输入框内横向滚动；剩余宽度全部交给「结果」列（见上方 `.fc-table__cell--result`）。 */
+.fc-cell {
+  width: 1%;
+  min-width: var(--fc-col-min, 92px);
+}
+
+.fc-cell .input {
+  width: calc(var(--fc-col-min, 92px) - 2 * var(--sp-2));
+  min-width: 0;
+  height: 28px;
+  /* **透明底**：输入框若自带底色，会把「斑马纹 / 选中整行 / hover / 定位高亮」的行底色整格盖住
+     —— v1.7.3「看上去只有第一格有强调」就是被它挡掉的（v1.7.4 修，见 §16.4） */
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+.fc-cell.is-invalid .input {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px var(--danger-soft);
+}
+
+.fc-result {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+}
+
+.fc-result.is-error {
+  color: var(--danger);
+}
+
+.fc-result.is-pending {
+  color: var(--text-faint);
+}
+
+.fc-table-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  justify-content: space-between;
+  margin-top: var(--sp-2);
+}
+
+.fc-table-foot__meta {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* ── 分步过程 ───────────────────────────────────────────── */
+.fc-steps {
+  display: grid;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fc-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-2);
+}
+
+.fc-step__index {
+  padding-top: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+}
+
+.fc-step__expr {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+
+.fc-step__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-2);
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* 步骤名（「变量替换」「先乘除」）回到中性色：变量色只留给「变量 ↔ 数值」这一件事（v1.7.5） */
+.fc-step__label {
+  color: var(--text-body);
+}
+
+.fc-step--omitted .fc-step__expr {
+  color: var(--text-faint);
+}
+
+.fc-result-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--hairline);
+}
+
+/* 结果行不在 .panel__foot 里，`.panel__spacer` 的 flex 只在面板页脚生效，这里补一条 */
+.fc-result-line .panel__spacer {
+  flex: 1 1 auto;
+}
+
+.fc-result-line__label {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.fc-result-line__value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-semibold);
+  /* 全页唯一「大面积橙色」让给主按钮，橙色的强调改由这枚数值承担（v1.7.5） */
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+.fc-result-line__value.is-error {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-regular);
+  color: var(--danger);
+}
+
+.fc-result-line__value.is-pending {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-regular);
+  color: var(--text-faint);
+}
+
+/* ── 历史记录 ───────────────────────────────────────────── */
+.fc-history {
+  display: grid;
+  gap: var(--sp-1);
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.fc-history__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+.fc-history__item.is-current {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent), inset 0 0 0 1px var(--hairline);
+}
+
+.fc-history__restore {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fc-history__formula {
+  display: block;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fc-history__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.fc-history__result {
+  font-family: var(--font-mono);
+  color: var(--ok);
+}
+
+.fc-history__result.is-error {
+  color: var(--danger);
+}
+
+.fc-history__actions {
+  display: flex;
+  gap: var(--sp-1);
+}
+
+/* ── 历史筛选（§16.7 v1.7.4）：只影响显示，不写存储 ─────── */
+.fc-history__search {
+  display: flex;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-1);
+}
+
+.fc-history__search[hidden] {
+  display: none;
+}
+
+.fc-history__search .input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  font-size: var(--fs-sm);
+}
+
+.fc-history__filter {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.fc-history__filter[hidden] {
+  display: none;
+}
+
+.fc-history__note {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-faint);
+}
+
+/* ── 导入 / 导出 ────────────────────────────────────────── */
+.fc-import {
+  margin-top: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--bg-inset);
+}
+
+.fc-import[hidden] {
+  display: none;
+}
+
+.fc-import__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.fc-import__file {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.fc-import__actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+/* 两段式确认态（§6：先问一次，再执行） */
+.fc-formula__actions .btn.is-armed,
+.fc-toolbar .btn.is-armed,
+.fc-history__actions .btn.is-armed {
+  border-color: var(--danger);
+  border-style: solid;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ── 工具条与卡片头 ─────────────────────────────────────── */
+.fc-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.fc-panel-meta {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* ── 版面：左右分栏（§16.1）─────────────────────────────────
+   左栏 = 公式计算（上）+ 历史记录（下）；右栏 = 变量表（跨两行）。
+   窄栏时按「公式计算 → 变量表 → 历史」堆叠 —— `.panel-grid` 的固定等宽模板做不到，
+   所以这里用工具私有的 grid areas（§9.5：单工具版式留在工具私有样式里）。 */
+.fc-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  /* v1.7.3：**每列各自是一个 flex 栈** —— 右栏两块的位置完全不受左栏高度影响
+     （v1.7.2 让左栏跨两行时，左栏变长会分摊到行高上，把历史记录推下去）。
+     列间距略大、行间距更紧，右栏两块因此贴得更近。 */
+  column-gap: var(--sp-4);
+  row-gap: var(--sp-3);
+  align-items: start;
+  margin-top: var(--sp-3);
+}
+
+.fc-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+/* 变量表固定视口高度：增删数据行不改变面板高度 ⇒ 历史记录不会被推着走（§16.1） */
+.fc-layout {
+  --fc-table-viewport: clamp(200px, 34vh, 360px);
+  /* 变量列最小宽度（列宽自适应，见 §16.4 与 附录 B 的 MIN_COL_WIDTH） */
+  --fc-col-min: 92px;
+  /* 行状态底色（选中 / 定位高亮）：**低比例强调混色**（≈9%）。
+     原来是 --accent-soft（≈14%），暗色主题下整行会「发烫」——强调改由强调条/行号/结果列承担（§16.13 v1.7.5） */
+  --fc-select-tint: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+/* ── 公式输入框：透明文本 + 彩色叠加层（§16.13）─────────────
+   关键：文本域与叠加层必须**逐像素同度量** —— 同字体 / 字号 / 行高 / 换行方式，
+   且两者都不带内边距与边框（边框与内边距统一由外层 box 承担），
+   否则换行位置与光标都会错位（§15.5 的度量对齐教训同样适用）。
+   v1.7.3：公式区是多行文本域，`Enter` 计算、`Alt+Enter` 换行（§16.9）。 */
+.fc-formula__box {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* 增高上限：超出后**公式框内部滚动**（叠加层是它的绝对定位子元素，会一起滚动） */
+  max-height: var(--fc-formula-max-h, 240px);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  overflow: auto;
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.fc-formula__box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.fc-formula__box .fc-formula__input,
+.fc-formula__layer {
+  display: block;
+  width: 100%;
+  min-height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-body);
+  line-height: 22px;
+  letter-spacing: normal;
+  /* 两者必须用同一套换行规则，否则折行位置不同 ⇒ 文字与光标错位 */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  tab-size: 2;
+}
+
+.fc-formula__box .fc-formula__input {
+  position: relative;
+  z-index: 1;
+  resize: none;
+  overflow: hidden; /* 高度由 JS 自动增高，内部不出现滚动条 */
+  /* 文字由背后的叠加层显示；光标仍用正文色，保持可见 */
+  color: transparent;
+  caret-color: var(--text-strong);
+}
+
+/* v1.7.3 修「双重边框」：文本域自己**不得**再画描边或聚焦环 —— 只留外层 box 那一层 */
+.fc-formula__box .fc-formula__input:focus,
+.fc-formula__box .fc-formula__input:focus-visible {
+  border: 0;
+  outline: none;
+  box-shadow: none;
+}
+
+.fc-formula__box .fc-formula__input::placeholder {
+  color: var(--text-faint);
+}
+
+.fc-formula__layer {
+  position: absolute;
+  top: var(--sp-2);
+  left: var(--sp-3);
+  right: var(--sp-3);
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* 关闭语法着色：叠加层让位，输入框自己显示文字 */
+.fc-formula__box.is-plain .fc-formula__input {
+  color: var(--text-body);
+}
+
+.fc-formula__box.is-plain .fc-formula__layer {
+  display: none;
+}
+
+/* ── 着色令牌（§16.13）────────────────────────────────────
+   只改颜色：**不设** font-weight / letter-spacing / padding / border，
+   否则会改变字符宽度、破坏透明输入框与叠加层的对齐。 */
+.fc-tok--number {
+  color: var(--text-body);
+}
+
+.fc-tok--op {
+  color: var(--text-muted);
+}
+
+.fc-tok--unknown {
+  color: var(--danger);
+}
+
+/* 变量，以及「变量后紧跟的取值数字」「变量替换后的数字」：用该变量的颜色 */
+.fc-tok--var,
+.fc-tok--origin {
+  color: var(--fc-var, inherit);
+}
+
+/* 括号：按嵌套深度取彩虹色，成对必然同色 */
+.fc-tok--paren {
+  color: var(--fc-bracket, var(--text-muted));
+}
+
+/* 变量配色：**低饱和**柔和色（8 色，明暗各一套），与高饱和的彩虹括号分工。
+   v1.7.5 重排：原 hue-1 = hsl(10)（橙红）、hue-2 = hsl(55)（黄绿）正好落在强调橙的邻近色相上，
+   变量表第一、二列于是与主题色「撞车」。新色板满足（见 §16.13「配色收敛」）：
+   · 相邻序号色相差 ≥ 50°；· 任一色与强调色相差 ≥ 65°。 */
+.fc-hue-1 { --fc-var: hsl(205 52% 38%); }
+.fc-hue-2 { --fc-var: hsl(320 45% 42%); }
+.fc-hue-3 { --fc-var: hsl(160 45% 31%); }
+.fc-hue-4 { --fc-var: hsl(265 45% 45%); }
+.fc-hue-5 { --fc-var: hsl(95 42% 32%); }
+.fc-hue-6 { --fc-var: hsl(185 50% 31%); }
+.fc-hue-7 { --fc-var: hsl(235 45% 46%); }
+.fc-hue-8 { --fc-var: hsl(300 42% 42%); }
+
+/* 彩虹括号：**高饱和**，按嵌套深度 1…6 循环 */
+.fc-depth-1 { --fc-bracket: hsl(0 75% 42%); }
+.fc-depth-2 { --fc-bracket: hsl(60 70% 30%); }
+.fc-depth-3 { --fc-bracket: hsl(120 60% 30%); }
+.fc-depth-4 { --fc-bracket: hsl(200 75% 38%); }
+.fc-depth-5 { --fc-bracket: hsl(270 65% 44%); }
+.fc-depth-6 { --fc-bracket: hsl(320 70% 40%); }
+
+/* 暗色主题：整体提亮，保证深底上可辨（§16.13 的可辨性要求）。色相与亮色主题一一对应 */
+[data-theme="dark"] .fc-hue-1 { --fc-var: hsl(205 60% 70%); }
+[data-theme="dark"] .fc-hue-2 { --fc-var: hsl(320 55% 74%); }
+[data-theme="dark"] .fc-hue-3 { --fc-var: hsl(160 50% 62%); }
+[data-theme="dark"] .fc-hue-4 { --fc-var: hsl(265 55% 76%); }
+[data-theme="dark"] .fc-hue-5 { --fc-var: hsl(95 50% 66%); }
+[data-theme="dark"] .fc-hue-6 { --fc-var: hsl(185 55% 66%); }
+[data-theme="dark"] .fc-hue-7 { --fc-var: hsl(235 62% 78%); }
+[data-theme="dark"] .fc-hue-8 { --fc-var: hsl(300 50% 76%); }
+
+[data-theme="dark"] .fc-depth-1 { --fc-bracket: hsl(0 90% 68%); }
+[data-theme="dark"] .fc-depth-2 { --fc-bracket: hsl(60 85% 62%); }
+[data-theme="dark"] .fc-depth-3 { --fc-bracket: hsl(120 70% 60%); }
+[data-theme="dark"] .fc-depth-4 { --fc-bracket: hsl(200 90% 68%); }
+[data-theme="dark"] .fc-depth-5 { --fc-bracket: hsl(270 85% 74%); }
+[data-theme="dark"] .fc-depth-6 { --fc-bracket: hsl(320 85% 72%); }
+
+/* 变量色在其它位置的用法：统一走 `var(--fc-var)`，**不枚举色号** */
+.fc-chip .fc-chip__name,
+.fc-var-name {
+  color: var(--fc-var, var(--text-strong));
+}
+
+/* 变量表的列头与单元格：同一变量同一色（表头下缘色条 + 单元格左缘色条）。
+   v1.7.5 降噪：色条一律 60% 混色（原来是不透明的整色，和表头文字、斑马纹互抢），
+   并且列头文字改回中性色 —— 变量色**只走色条**（§16.13「配色收敛」）。 */
+.fc-table thead th {
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--fc-var, transparent) 60%, transparent);
+}
+
+.fc-cell {
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--fc-var, transparent) 60%, transparent);
+}
+
+.fc-table .fc-var-name {
+  color: var(--text-muted);
+}
+
+/* ── 面板内的分块（「去掉取值的公式」 / 「计算过程」）─────────── */
+/* v1.7.2 紧凑化：分块间距取 `--sp-3`，不用 `--sp-4` / `--sp-5`（§16.1） */
+.fc-block {
+  margin-top: var(--sp-3);
+}
+
+.fc-block[hidden] {
+  display: none;
+}
+
+.fc-block__label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.fc-formula-line {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--bg-inset);
+  font-family: var(--font-mono);
+  font-size: var(--fs-body);
+  overflow-wrap: anywhere;
+}
+
+/* 结果行（v1.7.3）：紧跟公式栏、**常驻**；右侧是「计算」（主按钮）与「复制」。
+   v1.7.5 收敛：不再整块铺 `--accent-soft`（与主按钮两处大面积橙色互相抵消），
+   改为中性内嵌底 + 发丝描边，只把**数值**染成 `--accent`（§16.13「配色收敛」）。 */
+.fc-result-line {
+  align-items: center;
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 0;
+  border-radius: var(--r-sm);
+  background: var(--bg-inset);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+/* 「第 N 行 / 共 M 行」标记：多行数据时告诉用户看的是哪一行 */
+.fc-result-line__row {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* ── 窄栏：公式计算 → 变量表 → 历史（§16.1）──────────────── */
+@media (max-width: 1080px) {
+  .fc-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container pane (max-width: 1080px) {
+  .fc-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .fc-formula {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

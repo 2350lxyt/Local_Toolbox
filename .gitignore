@@ -47,3 +47,6 @@ tmp/
 /commit-msg.txt
 /td-*.cjs
 /td-*.png
+/fc-*.cjs
+/fc-*.mjs
+/fc-*.png

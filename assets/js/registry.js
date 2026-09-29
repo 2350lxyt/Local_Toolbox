@@ -83,6 +83,18 @@ export const TOOLS = [
     status: "ready",
     keywords: ["文本", "对比", "比较", "差异", "diff", "代码高亮", "两栏"],
   },
+  {
+    id: "formula-calc",
+    name: "公式计算器",
+    icon: "calculator",
+    description:
+      "解析含变量的数学公式并计算：自动提取变量横向成列，变量表可录入多行取值逐行求值，并分步展示计算过程，含历史记录。",
+    path: "tools/formula-calc/index.html",
+    entry: "tools/formula-calc/formula-calc.js",
+    styles: ["tools/formula-calc/formula-calc.css"],
+    status: "ready",
+    keywords: ["公式", "计算", "计算器", "变量", "表达式", "分步", "历史"],
+  },
 ];
 
 /** 按 id 查找工具记录 */
