@@ -90,7 +90,7 @@ export function instanceSessionKey(instance) {
   return serial > 1 ? `${CONFIG_KEY}:${serial}` : CONFIG_KEY;
 }
 
-/** 参数归一化（§16.2）：只认三个布尔开关，其余一律回默认值 */
+/** 参数归一化（§16.2）：只认下列布尔开关，其余一律回默认值 */
 export function normalizeConfig(raw) {
   const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   return {
@@ -98,6 +98,7 @@ export function normalizeConfig(raw) {
     showSteps: source.showSteps !== false,
     autoFillFromFormula: source.autoFillFromFormula !== false,
     syntaxHighlight: source.syntaxHighlight !== false,
+    restoreLastOnMount: source.restoreLastOnMount !== false,
   };
 }
 
@@ -269,6 +270,7 @@ const TEMPLATE = `
         <label class="checkbox"><input type="checkbox" data-config="showSteps" /> 展示分步过程</label>
         <label class="checkbox"><input type="checkbox" data-config="autoFillFromFormula" /> 从公式自动填值</label>
         <label class="checkbox"><input type="checkbox" data-config="syntaxHighlight" /> 语法着色</label>
+        <label class="checkbox"><input type="checkbox" data-config="restoreLastOnMount" /> 打开时恢复上次</label>
       </div>
     </div>
     <div class="panel__body">
@@ -1664,6 +1666,14 @@ export function init(ctx) {
   nodes.formula.value = state.formula;
   recompute({ record: false });
   renderAll();
+
+  // 挂载时自动恢复（§16.7 v1.7.6）：工具状态只在内存里，而外壳会重建面板、页面也可能被重新加载，
+  // 于是「算到一半的东西」会丢。历史已落盘，包一层把它放回面板即可 ——
+  // 只读既有的 history 键、只在初次挂载（此刻面板必为空）、历史为空则静默、且可由参数关闭。
+  if (state.config.restoreLastOnMount && state.history.length > 0) {
+    restoreHistory(state.history[0].id);
+    setStatus("已恢复上次的公式与取值（可在选项里关闭）", "ok");
+  }
 
   console.info(
     `[toolbox] 已挂载工具「${tool.name}」：历史 ${state.history.length} / ${MAX_HISTORY} 条，历史记录${state.config.historyEnabled ? "已开启" : "已关闭"}`
