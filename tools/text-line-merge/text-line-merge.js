@@ -50,6 +50,7 @@ const CONFIG_KEYS = [
   "suffix",
   "trim",
   "dropEmpty",
+  "dedupe",
   "escape",
   "escapeChar",
   "escapeMode",
@@ -72,6 +73,9 @@ export const DEFAULT_CONFIG = Object.freeze({
   suffix: "",
   trim: false,
   dropEmpty: false,
+  // 过滤重复（v1.7.7）：默认**开启**，且是所有预设（内置 / 自定义 / 导入）与既有落盘配置的默认值
+  // —— 这是 D 级已确认项（会改变既有默认输出），决策与边界见 docs/DESIGN.md 文档头、§10.1、§10.3
+  dedupe: true,
   escape: false,
   escapeChar: "'",
   escapeMode: "double",
@@ -90,6 +94,7 @@ export function normalizeConfig(partial) {
     suffix: asString(source.suffix, DEFAULT_CONFIG.suffix),
     trim: asBoolean(source.trim, DEFAULT_CONFIG.trim),
     dropEmpty: asBoolean(source.dropEmpty, DEFAULT_CONFIG.dropEmpty),
+    dedupe: asBoolean(source.dedupe, DEFAULT_CONFIG.dedupe),
     escape: asBoolean(source.escape, DEFAULT_CONFIG.escape),
     escapeChar: asString(source.escapeChar, DEFAULT_CONFIG.escapeChar),
     escapeMode: ESCAPE_MODES.includes(source.escapeMode)
@@ -106,8 +111,12 @@ export function configEquals(a, b) {
 }
 
 /**
- * 依据配置筛选与裁剪行：去首尾空白（可选）→ 丢弃空行（可选）。
+ * 依据配置筛选与裁剪行：去首尾空白（可选）→ 丢弃空行（可选）→ 过滤重复（v1.7.7，可选）。
  * 不套前后缀，供统计「参与合并行数」使用。
+ *
+ * 去重口径（docs/DESIGN.md §10.2）：与合并**实际使用**的文本逐字符严格相等才算重复，
+ * **保留首次出现**、其余顺序不变；空行同样参与。`dedupe === false` 时不分配比较集合、不做任何比较，
+ * 输出与改动前逐字节一致。
  * @param {string[]} lines
  * @param {Object} config
  * @returns {string[]}
@@ -115,9 +124,14 @@ export function configEquals(a, b) {
 export function selectLines(lines, config) {
   const cfg = normalizeConfig(config);
   const result = [];
+  const seen = cfg.dedupe ? new Set() : null;
   for (const raw of Array.isArray(lines) ? lines : []) {
     const line = cfg.trim ? raw.trim() : raw;
     if (cfg.dropEmpty && line === "") continue;
+    if (seen) {
+      if (seen.has(line)) continue; // 重复行：只保留首次出现
+      seen.add(line);
+    }
     result.push(line);
   }
   return result;
@@ -536,6 +550,10 @@ const TEMPLATE = `
             <span>忽略空行</span>
           </label>
           <label class="checkbox">
+            <input type="checkbox" id="tlm-dedupe" />
+            <span>过滤重复行</span>
+          </label>
+          <label class="checkbox">
             <input type="checkbox" id="tlm-escape" />
             <span>启用转义（仅作用于行内容）</span>
           </label>
@@ -571,6 +589,10 @@ const TEMPLATE = `
           <div class="stat">
             <div class="stat__value" data-stat="merged-lines">0</div>
             <div class="stat__label">参与合并</div>
+          </div>
+          <div class="stat">
+            <div class="stat__value" data-stat="deduped-lines">0</div>
+            <div class="stat__label">去重</div>
           </div>
           <div class="stat">
             <div class="stat__value" data-stat="output-chars">0</div>
@@ -682,6 +704,7 @@ export function init(ctx) {
     suffix: el("#tlm-suffix"),
     trim: el("#tlm-trim"),
     dropEmpty: el("#tlm-drop-empty"),
+    dedupe: el("#tlm-dedupe"),
     escape: el("#tlm-escape"),
     escapeGroup: el("[data-escape-group]"),
     escapeChar: el("#tlm-escape-char"),
@@ -692,6 +715,7 @@ export function init(ctx) {
     resultMeta: el("[data-result-meta]"),
     statInputLines: el('[data-stat="input-lines"]'),
     statMergedLines: el('[data-stat="merged-lines"]'),
+    statDedupedLines: el('[data-stat="deduped-lines"]'),
     statOutputChars: el('[data-stat="output-chars"]'),
     actions: {
       save: el('[data-action="save-preset"]'),
@@ -772,6 +796,7 @@ export function init(ctx) {
       suffix: nodes.suffix.value,
       trim: nodes.trim.checked,
       dropEmpty: nodes.dropEmpty.checked,
+      dedupe: nodes.dedupe.checked,
       escape: nodes.escape.checked,
       escapeChar: nodes.escapeChar.value,
       escapeMode: nodes.escapeMode.value,
@@ -786,6 +811,7 @@ export function init(ctx) {
     nodes.suffix.value = cfg.suffix;
     nodes.trim.checked = cfg.trim;
     nodes.dropEmpty.checked = cfg.dropEmpty;
+    nodes.dedupe.checked = cfg.dedupe;
     nodes.escape.checked = cfg.escape;
     nodes.escapeChar.value = cfg.escapeChar;
     nodes.escapeMode.value = cfg.escapeMode;
@@ -1088,12 +1114,18 @@ export function init(ctx) {
     const selected = selectLines(lines, cfg);
     state.result = mergeLines(selected, cfg);
 
+    // 「去重」统计 = 去重前条数 − 去重后条数（§10.6）：
+    // 用同一个纯函数反推去重前条数；关闭去重时直接复用 selected，不重复计算、也不改变任何既有行为
+    const beforeDedupe = cfg.dedupe ? selectLines(lines, { ...cfg, dedupe: false }) : selected;
+    const dedupedAway = beforeDedupe.length - selected.length;
+
     const totalLines = textUtils.countLines(raw);
     const outputChars = textUtils.countChars(state.result);
     const hasResult = state.result !== "";
 
     nodes.statInputLines.textContent = String(totalLines);
     nodes.statMergedLines.textContent = String(selected.length);
+    nodes.statDedupedLines.textContent = String(dedupedAway);
     nodes.statOutputChars.textContent = String(outputChars);
     nodes.inputLines.textContent = `${totalLines} 行`;
 
@@ -1261,7 +1293,7 @@ export function init(ctx) {
   [nodes.separator, nodes.prefix, nodes.suffix, nodes.escapeChar].forEach((node) => {
     bind(node, "input", onOptionChange);
   });
-  [nodes.trim, nodes.dropEmpty, nodes.escape, nodes.escapeMode].forEach((node) => {
+  [nodes.trim, nodes.dropEmpty, nodes.dedupe, nodes.escape, nodes.escapeMode].forEach((node) => {
     bind(node, "change", onOptionChange);
   });
 
@@ -1342,7 +1374,7 @@ export function init(ctx) {
 
 export const meta = {
   id: "text-line-merge",
-  version: "1.0.0",
+  version: "1.1.0",
   status: "ready",
 };
 
