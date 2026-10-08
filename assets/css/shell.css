@@ -391,7 +391,6 @@
   animation-delay: var(--d, 0ms);
 }
 
-/* 首页主视觉：非对称 7 / 5 栅格 */
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -507,7 +506,8 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
-  margin-top: var(--sp-2);
+  /* 吸附卡片底部：同一行内说明行数不同的卡片，底栏仍对齐（docs/DESIGN.md §4.3） */
+  margin-top: auto;
   padding-top: var(--sp-3);
   border-top: 1px solid var(--hairline);
 }
