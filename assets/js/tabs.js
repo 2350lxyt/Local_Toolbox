@@ -17,7 +17,7 @@
  * 本文件不包含任何具体工具的业务逻辑。
  */
 
-import { STATUS_LABEL, getToolById } from "./registry.js";
+import { getToolById } from "./registry.js";
 import { icon } from "./icons.js";
 import * as dom from "./utils/dom.js";
 
@@ -574,9 +574,6 @@ export function createTabsWorkspace(options = {}) {
       `<div class="tool-head__main">` +
       `<div class="tool-head__eyebrow">` +
       `<p class="meta-label">工具 / ${dom.escapeHtml(tool.id)}</p>` +
-      (tool.status === "ready"
-        ? ""
-        : `<span class="badge badge--warn">${dom.escapeHtml(STATUS_LABEL[tool.status] || STATUS_LABEL.planned)}</span>`) +
       `</div>` +
       `<h1 class="tool-head__title"></h1>` +
       `<p class="tool-head__desc">${dom.escapeHtml(tool.description)}</p>` +

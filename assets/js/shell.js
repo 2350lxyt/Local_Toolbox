@@ -141,7 +141,7 @@ function navItemMarkup(tool, isActive) {
     `>` +
     `<span class="nav__icon" aria-hidden="true">${icon(tool.icon, 18)}</span>` +
     `<span class="nav__text">${dom.escapeHtml(tool.name)}</span>` +
-    (showStatus ? `<span class="nav__badge">${dom.escapeHtml(status)}</span>` : "") +
+    (showStatus ? `<span class="nav__badge"><span class="status-lamp" aria-hidden="true"></span>${dom.escapeHtml(status)}</span>` : "") +
     `</a></li>`
   );
 }
@@ -211,16 +211,20 @@ function renderToolGrid() {
   const grid = dom.qs("[data-tool-grid]");
   if (!grid) return;
 
-  grid.innerHTML = TOOLS.map((tool) => {
+  grid.innerHTML = TOOLS.map((tool, index) => {
     const status = STATUS_LABEL[tool.status] || STATUS_LABEL.planned;
     const planned = tool.status !== "ready";
+    const seq = String(index + 1).padStart(2, "0");
     return (
       `<li class="tool-card${planned ? " is-planned" : ""}">` +
       `<a class="tool-card__link" href="${dom.escapeHtml(toSiteUrl(tool.path))}" ` +
       `data-tool="${dom.escapeHtml(tool.id)}">` +
       `<span class="tool-card__top">` +
       `<span class="tool-card__icon" aria-hidden="true">${icon(tool.icon, 20)}</span>` +
-      (planned ? `<span class="badge badge--warn">${dom.escapeHtml(status)}</span>` : "") +
+      `<span class="tool-card__meta">` +
+      `<span class="tool-card__index" aria-hidden="true">${seq}</span>` +
+      (planned ? `<span class="badge badge--warn"><span class="status-lamp" aria-hidden="true"></span>${dom.escapeHtml(status)}</span>` : "") +
+      `</span>` +
       `</span>` +
       `<span class="tool-card__name">${dom.escapeHtml(tool.name)}</span>` +
       `<span class="tool-card__desc">${dom.escapeHtml(tool.description)}</span>` +

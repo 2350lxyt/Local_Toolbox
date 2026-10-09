@@ -392,11 +392,36 @@
 }
 
 .hero {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-8);
   padding-bottom: var(--sp-8);
   border-bottom: 1px solid var(--hairline);
+}
+
+/* v1.7.11：工程标尺 —— 主视觉下方的水平基准线，刻度周期跟随 --grid-size（docs/DESIGN.md §3.1） */
+.hero::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 7px;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-image: repeating-linear-gradient(
+      90deg,
+      var(--accent) 0 1px,
+      transparent 1px calc(var(--grid-size) * 4)
+    ),
+    repeating-linear-gradient(
+      90deg,
+      var(--accent-ring) 0 1px,
+      transparent 1px var(--grid-size)
+    );
+  background-size: 100% 7px, 100% 4px;
 }
 
 .hero__title {
@@ -494,6 +519,31 @@
 .tool-card__icon .icon {
   width: 20px;
   height: 20px;
+}
+
+/* v1.7.11：卡片右上角编号与状态灯（docs/DESIGN.md §3.1 / §4.3） */
+.tool-card__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.tool-card__index {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+
+/* 状态灯：仅在非 ready 时随徽标出现；空心圆随父级语义色着色 */
+.status-lamp {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  box-shadow: inset 0 0 0 1.5px currentColor;
 }
 
 .tool-card__name {
