@@ -491,6 +491,7 @@ const TEMPLATE = `
       <div class="panel__body">
         <div class="output tlm-output" data-output hidden></div>
         <div class="empty" data-output-empty>
+          <span class="empty__icon" aria-hidden="true">__I_EMPTY_OUTPUT__</span>
           <p class="empty__title">暂无结果</p>
           <p class="empty__text">在上方输入多行文本后，合并结果会实时显示在这里。</p>
         </div>
@@ -618,6 +619,7 @@ const ICON_TOKENS = {
   __I_OUTPUT__: ["check", 16],
   __I_MERGE__: ["merge", 15],
   __I_COPY__: ["copy", 15],
+  __I_EMPTY_OUTPUT__: ["merge", 20],
 };
 
 /* ========================================================== 通用小工具 */

@@ -175,8 +175,9 @@
 
 .nav__badge {
   flex: 0 0 auto;
-  padding: 1px 6px;
-  font-size: 10px;
+  /* v1.7.12：改用令牌（原为硬编码 1px 6px / 10px，违反 §3.4 间距取自刻度） */
+  padding: 2px var(--sp-2);
+  font-size: var(--fs-xs);
   font-weight: var(--fw-medium);
   letter-spacing: 0.04em;
   color: var(--warn);

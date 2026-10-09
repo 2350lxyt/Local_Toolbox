@@ -80,11 +80,15 @@ export function setThemePref(pref) {
   return applyTheme(next);
 }
 
+/** 下一个偏好（循环顺序：跟随系统 → 浅色 → 深色 → 跟随系统）。按钮文案也用它，避免顺序两处定义。 */
+export function nextThemePref(pref = getThemePref()) {
+  const index = THEME_PREFS.indexOf(pref);
+  return THEME_PREFS[(index + 1) % THEME_PREFS.length];
+}
+
 /** 按 跟随系统 → 浅色 → 深色 → 跟随系统 的顺序循环 */
 export function cycleThemePref() {
-  const current = getThemePref();
-  const index = THEME_PREFS.indexOf(current);
-  const next = THEME_PREFS[(index + 1) % THEME_PREFS.length];
+  const next = nextThemePref();
   setThemePref(next);
   return next;
 }

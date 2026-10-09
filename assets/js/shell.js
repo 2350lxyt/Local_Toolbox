@@ -25,6 +25,7 @@ import {
   cycleThemePref,
   getThemePref,
   initTheme,
+  nextThemePref,
 } from "./theme.js";
 
 /* ------------------------------------------------------------------ 路径 */
@@ -358,7 +359,7 @@ function setupThemeButton() {
   const sync = () => {
     const pref = getThemePref();
     button.innerHTML = icon(THEME_ICON[pref] || "monitor", 18);
-    const label = `主题：${THEME_LABEL[pref]}（点击切换）`;
+    const label = `主题：${THEME_LABEL[pref]}（点击切换为${THEME_LABEL[nextThemePref(pref)]}）`;
     button.setAttribute("aria-label", label);
     button.title = label;
   };

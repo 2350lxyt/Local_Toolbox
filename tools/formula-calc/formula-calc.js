@@ -239,6 +239,9 @@ const ICON_TOKENS = Object.freeze({
   __I_PLUS__: ["plus", 15],
   __I_TRASH__: ["trash", 15],
   __I_UPLOAD__: ["upload", 15],
+  __I_EMPTY_STEPS__: ["alignLeft", 20],
+  __I_EMPTY_TABLE__: ["columns", 20],
+  __I_EMPTY_HISTORY__: ["hourglass", 20],
 });
 
 const TEMPLATE = `
@@ -324,6 +327,7 @@ const TEMPLATE = `
       <div class="fc-block" data-steps-block hidden>
         <p class="fc-block__label">计算过程<span class="fc-panel-meta" data-steps-meta></span></p>
         <div class="empty" data-steps-empty>
+          <span class="empty__icon" aria-hidden="true">__I_EMPTY_STEPS__</span>
           <p class="empty__title">暂无计算过程</p>
           <p class="empty__text">输入公式并填写取值后，这里会逐步展示计算过程。</p>
         </div>
@@ -353,6 +357,7 @@ const TEMPLATE = `
         </table>
       </div>
       <div class="empty" data-table-empty>
+        <span class="empty__icon" aria-hidden="true">__I_EMPTY_TABLE__</span>
         <p class="empty__title">还没有变量</p>
         <p class="empty__text">写下含变量的公式（例如 单价10*数量25），变量会自动出现在这里。</p>
       </div>
@@ -414,6 +419,7 @@ const TEMPLATE = `
 
     <ul class="fc-history" data-history hidden></ul>
     <div class="empty" data-history-empty>
+      <span class="empty__icon" aria-hidden="true">__I_EMPTY_HISTORY__</span>
       <p class="empty__title" data-history-empty-title>暂无历史记录</p>
       <p class="empty__text" data-history-empty-text>每次算出结果后会自动记录一条（含整张变量表），最多保留 50 条。</p>
     </div>

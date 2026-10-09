@@ -349,6 +349,18 @@ body[data-tool] .workspace {
   border-radius: var(--r-sm);
 }
 
+/* v1.7.12：空状态前置图标 —— 给「空」一个可识别的视觉锚点（图标来自 icons.js，经 ctx.icons 注入） */
+.empty__icon {
+  display: grid;
+  place-items: center;
+  color: var(--text-faint);
+}
+
+.empty__icon .icon {
+  width: 20px;
+  height: 20px;
+}
+
 .empty__title {
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
