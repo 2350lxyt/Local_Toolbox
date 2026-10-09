@@ -429,14 +429,21 @@
 }
 
 /* 工具总览卡片 */
+/* v1.7.10：flex 均分收尾 —— 固定列数在工具数为质数时末行必然空洞；
+   flex-wrap + flex-grow 让每一行（含末行）都填满容器，无需 JS（docs/DESIGN.md §4.3）。
+   max-width 防止末行只剩 1 张时被拉成整行；justify-content 让不足一行的部分居中。 */
 .tool-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(292px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--sp-4);
+  justify-content: center;
 }
 
 .tool-card {
   display: flex;
+  flex: 1 1 292px;
+  min-width: 0;
+  max-width: 520px;
 }
 
 .tool-card__link {
@@ -627,7 +634,17 @@
     font-size: 24px;
   }
 
+  /* v1.7.10：窄屏收紧卡片（单列由 flex-wrap 自然达成，不再写列数） */
   .tool-grid {
-    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-3);
+  }
+
+  .tool-card__link {
+    padding: var(--sp-4);
+  }
+
+  .tool-card__icon {
+    width: 34px;
+    height: 34px;
   }
 }
