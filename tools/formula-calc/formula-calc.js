@@ -538,6 +538,13 @@ export function init(ctx) {
     historyQuery: "",
     /** 当前编辑命中的历史条目 id（用于列表高亮） */
     activeHistoryId: "",
+    /**
+     * 自动填值的**记账**（v1.7.14）：变量名 → 上一次由公式预填进第一行的**原样写法**。
+     * 只有当单元格内容仍等于这里的记录（或为空格子）时才认为它「仍然是自动的」，
+     * 从而在公式里的取值变化后同步更新；用户手改过的格会从记账里删除，公式再变也不覆盖它。
+     * **不落盘**（只存在于内存，与「输入不持久化」口径一致）。
+     */
+    autoFilled: {},
     storageWarned: false,
     armed: { clearFormula: false, clearHistory: false, deleteId: "" },
   };
@@ -634,7 +641,16 @@ export function init(ctx) {
 
   /* ── 变量表数据同步 ───────────────────────────────────── */
 
-  /** 变量集合变化时对齐每行的单元格（单元格按**变量名**索引，公式调整顺序不会串值） */
+  /**
+   * 变量集合变化时对齐每行的单元格（单元格按**变量名**索引，公式调整顺序不会串值）。
+   *
+   * **取值预填跟随公式（v1.7.14，§16.4）**：公式里提取到的取值填进**第一行**，并且当公式里的取值
+   * 发生变化时（例如 `单价10` → `单价10.5`，含小数），**仍处于「自动」状态的单元格会同步更新**。
+   * 原实现「只要格子非空就永不写入」会让 chips 已经显示新取值、表格却还留着旧值 ——
+   * 结果自然按旧值算，看起来就是「公式里的小数没被采用」。
+   * 判定「仍处于自动状态」靠 `state.autoFilled` 记账：内容与记账一致（或为空）才更新；
+   * 用户在单元格里手改过就会从记账里删除，此后公式再变也不覆盖它。
+   */
   function syncRows() {
     const names = state.variables.map((variable) => variable.name);
     state.rows.forEach((row) => {
@@ -642,15 +658,32 @@ export function init(ctx) {
         if (!names.includes(name)) delete row.cells[name];
       });
     });
+    // 变量消失后它的记账也失效
+    Object.keys(state.autoFilled).forEach((name) => {
+      if (!names.includes(name)) delete state.autoFilled[name];
+    });
     if (state.rows.length === 0) state.rows.push({ cells: {} });
     if (state.selectedRow >= state.rows.length) state.selectedRow = state.rows.length - 1;
 
-    if (!state.config.autoFillFromFormula) return;
+    if (!state.config.autoFillFromFormula) {
+      // 关掉自动填值即「忘记归属」：现有内容一律视为用户自己的
+      state.autoFilled = {};
+      return;
+    }
     const first = state.rows[0];
     state.variables.forEach((variable) => {
-      if (variable.prefill === null || variable.prefillRaw === null) return;
-      if (String(first.cells[variable.name] || "").trim() !== "") return;
-      first.cells[variable.name] = variable.prefillRaw;
+      const name = variable.name;
+      const raw = variable.prefillRaw;
+      if (raw === null || raw === undefined) return; // 公式没给取值：保持原样，不清空也不猜
+      const current = String(first.cells[name] === undefined ? "" : first.cells[name]).trim();
+      const tracked = Object.prototype.hasOwnProperty.call(state.autoFilled, name)
+        ? String(state.autoFilled[name]).trim()
+        : null;
+      // 空格子，或内容仍是上一次自动填入的那个值 → 同步为新取值；用户手改过的格不动
+      if (current === "" || (tracked !== null && current === tracked)) {
+        first.cells[name] = raw;
+        state.autoFilled[name] = raw;
+      }
     });
   }
 
@@ -1138,6 +1171,7 @@ export function init(ctx) {
       state.variables = [];
       state.rows = [{ cells: {} }];
       state.selectedRow = 0;
+      state.autoFilled = {}; // 连带清掉自动填值的记账（表格已归零）
     } else {
       showError(analysis.error);
     }
@@ -1197,6 +1231,8 @@ export function init(ctx) {
       });
     }
     renderFormulaMeta();
+    // 结果行与分步都属于**当前选中行**：换行必须一起刷新（v1.7.14，§16.9 结果行的「第 N 行」标记 / §16.10）
+    renderResult();
     renderSteps();
   }
 
@@ -1221,6 +1257,8 @@ export function init(ctx) {
       setStatus("至少保留一行数据。", "warn");
       return;
     }
+    // 预填的目标行就是第一行：它被删掉后「自动状态」的记账随之失效（v1.7.14）
+    if (state.selectedRow === 0) state.autoFilled = {};
     state.rows.splice(state.selectedRow, 1);
     state.selectedRow = Math.max(0, Math.min(state.selectedRow, state.rows.length - 1));
     evaluateAll();
@@ -1236,6 +1274,7 @@ export function init(ctx) {
       return;
     }
     state.rows = state.rows.map(() => ({ cells: {} }));
+    state.autoFilled = {}; // 全线清空后重新开始记账（下一轮重算会按公式重新预填）
     evaluateAll();
     renderAll();
     setStatus(`已清空 ${state.rows.length} 行的取值`, "warn");
@@ -1269,6 +1308,7 @@ export function init(ctx) {
     nodes.formula.value = "";
     state.rows = [{ cells: {} }];
     state.selectedRow = 0;
+    state.autoFilled = {};
     recompute({ record: false });
     setStatus("已清空公式与变量表", "warn");
     nodes.formula.focus();
@@ -1315,6 +1355,8 @@ export function init(ctx) {
     if (!item) return;
     backfillCurrentEdit();
     nodes.formula.value = item.formula;
+    // 恢复出来的取值是**用户当时的数据**，不再属于「自动填值」→ 清掉记账，公式再变也不覆盖（v1.7.14）
+    state.autoFilled = {};
     // 恢复**整张变量表**与当时选中的行（§16.7）
     state.rows = item.rows.length > 0 ? item.rows.map((cells) => ({ cells: { ...cells } })) : [{ cells: {} }];
     state.selectedRow = Math.max(0, Math.min(item.selectedRow, state.rows.length - 1));
@@ -1565,10 +1607,17 @@ export function init(ctx) {
     const variable = state.variables[column];
     if (!variable || !state.rows[rowIndex]) return;
     state.rows[rowIndex].cells[variable.name] = input.value;
+    // 第一行是自动填值的落点：用户一旦手改，该格就归用户所有 —— 从记账里删除，
+    // 此后公式里的取值再变也不会覆盖它（v1.7.14，§16.4）
+    if (rowIndex === 0) delete state.autoFilled[variable.name];
     // 每行互相独立：只重算被编辑的这一行，立即刷新它的结果与非法态
     state.evaluations[rowIndex] = evaluateRow(rowIndex);
     refreshRow(rowIndex);
-    if (rowIndex === state.selectedRow) renderSteps();
+    // 顶部结果行（含「复制」可用状态）与分步都属于**选中行**，编辑它时必须一并刷新（v1.7.14）
+    if (rowIndex === state.selectedRow) {
+      renderResult();
+      renderSteps();
+    }
   });
 
   bind(nodes.tableBody, "click", (event) => {

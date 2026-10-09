@@ -72,7 +72,12 @@ const MINUS_SIGN = 0x2212;
 const EN_DASH = 0x2013;
 
 const NUMBER_PATTERN = /^(?:\d+(?:\.\d+)?|\.\d+)/;
-const TRAILING_DIGITS_PATTERN = /^[0-9]+/;
+/**
+ * 「变量名之后紧跟的取值」与独立数值**共用同一套数字文法**（v1.7.13 起支持小数）。
+ * 原先单独用 /^[0-9]+/ 只认整数：`单价10.5` 会被切成「取值 10」+ 裸数字 `.5`，
+ * 于是报「缺少运算符」（§16.3）。直接复用 NUMBER_PATTERN，杜绝两处文法再次分叉。
+ */
+const TRAILING_NUMBER_PATTERN = NUMBER_PATTERN;
 const LETTER_PATTERN = /\p{L}/u;
 
 function fail(code, error, index) {
@@ -214,7 +219,7 @@ export function tokenize(input) {
       // 数字可再带一个 %，此时取值按 0.01 折算、原样写法记为 `15%`。
       let digitsAt = cursor;
       while (digitsAt < text.length && isWhitespaceChar(text[digitsAt])) digitsAt += 1;
-      const digits = TRAILING_DIGITS_PATTERN.exec(text.slice(digitsAt));
+      const digits = TRAILING_NUMBER_PATTERN.exec(text.slice(digitsAt));
       if (digits) {
         let end = digitsAt + digits[0].length;
         let value = Number(digits[0]);
@@ -334,7 +339,7 @@ export function annotateFormula(input) {
 
       let digitsAt = cursor;
       while (digitsAt < text.length && isWhitespaceChar(text[digitsAt])) digitsAt += 1;
-      const digits = TRAILING_DIGITS_PATTERN.exec(text.slice(digitsAt));
+      const digits = TRAILING_NUMBER_PATTERN.exec(text.slice(digitsAt));
       if (digits) {
         let end = digitsAt + digits[0].length;
         if (text[end] === "%") end += 1;
