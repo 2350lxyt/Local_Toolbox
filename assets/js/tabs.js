@@ -105,6 +105,19 @@ export function normalizeNameInput(value) {
     .slice(0, MAX_NAME_LENGTH);
 }
 
+/**
+ * 重命名输入框的**兜底宽度估算**（仅在量不到 `.tab__main` 实测宽度时使用，§5.2）。
+ * 按 `ch` 折算字符数，**宽字符（CJK / 全角）按 2ch 计** —— 直接用 `name.length` 会把
+ * 5 字中文名算成 7ch，明显偏窄，从而让标签在重命名时缩短。
+ * @param {string} name 标签显示名
+ */
+function estimateRenameWidthCh(name) {
+  const text = String(name === null || name === undefined ? "" : name);
+  let units = 0;
+  for (const char of text) units += char.codePointAt(0) > 0x2e7f ? 2 : 1;
+  return Math.min(MAX_NAME_LENGTH, Math.max(6, units + 2));
+}
+
 /* --------------------------------------------------------------- 主体 */
 
 /**
@@ -970,11 +983,13 @@ export function createTabsWorkspace(options = {}) {
     bind(input, "pointerdown", (event) => event.stopPropagation());
     bind(input, "dblclick", (event) => event.stopPropagation());
 
-    // 输入时实时更新（输入框就在标签内，所见即所得），并同步宽度与提示
+    // 输入时只同步提示文案，**宽度不随输入重算**（v1.7.13）：
+    // 宽度已在 beginRename 里按 `.tab__main` 的实测宽度定死；若在这里按「字符数 × ch」重设，
+    // 1 个中文约占 2ch，输入第一个字标签就会明显缩短（docs/DESIGN.md §5.2 / §6）。
+    // 超出可视宽度的部分由输入框自身横向滚动承载，光标始终可见，标签栏几何不变。
     bind(input, "input", () => {
       const draft = normalizeNameInput(input.value);
       input.title = draft || "名称不能为空";
-      input.style.width = `${Math.min(MAX_NAME_LENGTH, Math.max(6, draft.length + 2))}ch`;
     });
 
     bind(input, "keydown", (event) => {
@@ -1020,10 +1035,19 @@ export function createTabsWorkspace(options = {}) {
     const input = record.tab.rename;
     record.renaming = true;
     record.tab.el.setAttribute("draggable", "false");
+    // v1.7.13：宽度取 .tab__main 的**实测宽度**，且必须在 hidden 之前量 ——
+    // 原实现按「名字字符数 × ch」估算：中文 1 字约占 2ch，5 字中文名被估成 7ch，
+    // 输入框比标签窄，进入重命名时标签会缩短（docs/DESIGN.md §5.2）。
+    // 该宽度在整个编辑过程中保持不变（向上取整，避免亚像素被截断后再缩短）；
+    // 输入过程中也不得重算（见 setupRenameInput 的 input 处理器）。
+    const mainWidth = record.tab.main.getBoundingClientRect().width;
     record.tab.main.hidden = true;
     input.value = record.name;
     input.title = record.name;
-    input.style.width = `${Math.min(MAX_NAME_LENGTH, Math.max(6, record.name.length + 2))}ch`;
+    input.style.width =
+      mainWidth > 0
+        ? `${Math.ceil(mainWidth)}px`
+        : `${estimateRenameWidthCh(record.name)}ch`; // 兜底：量不到宽度时才用字符数估算（宽字符按 2ch）
     dom.setAttrs(input, { "aria-label": `重命名标签：${record.name}` });
     input.hidden = false;
     input.focus();

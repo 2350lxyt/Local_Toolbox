@@ -233,8 +233,9 @@ body[data-mode="tabs"] .workspace {
   text-overflow: ellipsis;
 }
 
-/* 内联重命名输入框（v1.3.0）：与 .tab__main 占同一位置，宽度随输入自适应但受上限约束，
-   避免标签栏在输入过程中跳动（docs/DESIGN.md §5.2 / §6） */
+/* 内联重命名输入框（v1.3.0；宽度口径 v1.7.13）：与 .tab__main 占同一位置，
+   宽度**由 JS 在进入编辑时按 .tab__main 的实测宽度设定一次**（见 tabs.js beginRename），
+   受上限约束；输入过程中不重算，故标签栏几何在编辑全程保持不动（docs/DESIGN.md §5.2 / §6） */
 .tab__rename {
   flex: 0 0 auto;
   height: 22px;
