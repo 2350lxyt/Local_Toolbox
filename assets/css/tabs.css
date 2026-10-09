@@ -264,8 +264,22 @@ body[data-mode="tabs"] .workspace {
   height: 20px;
   color: var(--text-faint);
   border-radius: var(--r-xs);
+  /* 去噪（v1.7.9）：默认不可见、不可聚焦；仍占位，标签栏几何不跳动（docs/DESIGN.md §5.2 / §7） */
+  visibility: hidden;
   transition: color var(--dur-fast) var(--ease-out),
     background-color var(--dur-fast) var(--ease-out);
+}
+
+/* 悬停 / 激活 / 焦点进入该标签时出现；菜单展开与关闭待确认时强制常显 */
+.tab:hover .tab__close,
+.tab:hover .tab__menu,
+.tab.is-active .tab__close,
+.tab.is-active .tab__menu,
+.tab:focus-within .tab__close,
+.tab:focus-within .tab__menu,
+.tab__close.is-armed,
+.tab__menu[aria-expanded="true"] {
+  visibility: visible;
 }
 
 .tab__close:hover,

@@ -574,7 +574,9 @@ export function createTabsWorkspace(options = {}) {
       `<div class="tool-head__main">` +
       `<div class="tool-head__eyebrow">` +
       `<p class="meta-label">工具 / ${dom.escapeHtml(tool.id)}</p>` +
-      `<span class="badge badge--ok">${dom.escapeHtml(STATUS_LABEL[tool.status] || "")}</span>` +
+      (tool.status === "ready"
+        ? ""
+        : `<span class="badge badge--warn">${dom.escapeHtml(STATUS_LABEL[tool.status] || STATUS_LABEL.planned)}</span>`) +
       `</div>` +
       `<h1 class="tool-head__title"></h1>` +
       `<p class="tool-head__desc">${dom.escapeHtml(tool.description)}</p>` +

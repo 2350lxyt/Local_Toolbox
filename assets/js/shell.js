@@ -128,6 +128,8 @@ const SHELL_TEMPLATE = `
 /** 生成一个左侧列表项 */
 function navItemMarkup(tool, isActive) {
   const status = STATUS_LABEL[tool.status] || STATUS_LABEL.planned;
+  // v1.7.9：已就绪的工具不显示状态徽标（docs/DESIGN.md §4.3）
+  const showStatus = tool.status !== "ready";
   return (
     `<li>` +
     `<a class="nav__item${isActive ? " is-active" : ""}" ` +
@@ -139,7 +141,7 @@ function navItemMarkup(tool, isActive) {
     `>` +
     `<span class="nav__icon" aria-hidden="true">${icon(tool.icon, 18)}</span>` +
     `<span class="nav__text">${dom.escapeHtml(tool.name)}</span>` +
-    `<span class="nav__badge">${dom.escapeHtml(status)}</span>` +
+    (showStatus ? `<span class="nav__badge">${dom.escapeHtml(status)}</span>` : "") +
     `</a></li>`
   );
 }
@@ -218,7 +220,7 @@ function renderToolGrid() {
       `data-tool="${dom.escapeHtml(tool.id)}">` +
       `<span class="tool-card__top">` +
       `<span class="tool-card__icon" aria-hidden="true">${icon(tool.icon, 20)}</span>` +
-      `<span class="badge badge--${planned ? "warn" : "ok"}">${dom.escapeHtml(status)}</span>` +
+      (planned ? `<span class="badge badge--warn">${dom.escapeHtml(status)}</span>` : "") +
       `</span>` +
       `<span class="tool-card__name">${dom.escapeHtml(tool.name)}</span>` +
       `<span class="tool-card__desc">${dom.escapeHtml(tool.description)}</span>` +
