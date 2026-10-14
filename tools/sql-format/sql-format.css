@@ -289,6 +289,21 @@
 
 .sf-editor {
   --sf-sbw: 0px;
+  /* 标记底色（v1.7.15）：搜索命中 / 相同文本 / 当前命中 / 括号匹配的底纹。
+     浅色主题沿用令牌的 soft 色（外观与改动前完全一致）；暗色主题在下方按 §13.4
+     「底色强度按主题分别定值」单独提高混色比例 —— 深色底会吞掉浅色底纹。
+     标记**只负责底色**，文字色一律 `color: inherit`（见文末 mark 规则）。 */
+  --sf-same-bg: var(--info-soft);
+  --sf-hit-bg: var(--warn-soft);
+  --sf-accent-bg: var(--accent-soft);
+  --sf-danger-bg: var(--danger-soft);
+  /* 选区色带（v1.7.15）：透明 textarea 的字形全由高亮层绘制，所以选区**只能用半透明色带**表达。
+     它还会**叠加在「相同文本」标记之上**（有选区时才有这个高亮），因此比《文本对比》的选区色带更轻：
+     15% 强调混色，保证叠加后文字仍 ≥ AA（实测浅色 4.62:1 / 暗色 6.55:1，见 §13.4）。 */
+  --sf-selection-bg: var(--accent-ring);
+  /* 「相同文本」标记的 1px 描边（v1.7.17；兜底为透明 = 不支持 color-mix 时只有底色）。
+     用 `outline` 而非 `border`：行内 border 会加宽行内盒，使高亮层文字与透明 textarea 错位（v1.6.5）。 */
+  --sf-same-edge: transparent;
   position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -383,8 +398,13 @@
   color: var(--text-faint);
 }
 
+/* 选区色带（v1.7.15）：透明 textarea 的字形由高亮层绘制，因此选区**只能用半透明色带**表示。
+   原来直接复用 `--accent-soft`，而它在浅色主题下是**不透明**的 `--brand-100` ——
+   会把选中的那个词整块盖住（像素采样实测：选区内 45 个采样点全为 `rgb(253, 236, 227)`，
+   一个字都看不到）。现用 `.sf-editor` 上的 `--sf-selection-bg`（15% 强调混色；不支持 color-mix
+   时回退到同样半透明的 `--accent-ring`），口径见 §13.4「选区色带必须半透明」。 */
 .sf-input::selection {
-  background: var(--accent-soft);
+  background: var(--sf-selection-bg);
   color: transparent;
 }
 
@@ -439,31 +459,120 @@
   color: var(--danger);
 }
 
+/* ------------------------------------------------ 彩虹括号（v1.7.16，§13.5） */
+
+/* 括号按**嵌套深度**取色：深度 1…6 循环（`BRACKET_HUE_COUNT = 6`），同一对括号必然同色。
+   色板是**工具私有**变量（明暗各一套，色相沿用《公式计算器》§16.13 的彩虹语义，
+   亮色主题按本工具的纸感底色 `--bg-base` 调深、暗色主题沿用同一组亮色值），不上移 tokens.css（§11.1）。
+   `data-rainbow="off"` 时本段整体不生效 ⇒ 括号回落为 `.sf-tok--punct` 的标点色，
+   因此渲染层可以**无条件**产出 `sf-br--N` 类（「选项 → 颜色」只有一处实现）。
+   硬性：只改**颜色**，不得碰字号 / 字重 / 字距（透明 textarea 的度量对齐，§13.5）。 */
+.sf-editor[data-rainbow="on"] {
+  --sf-br-1: hsl(0 75% 42%);
+  --sf-br-2: hsl(60 80% 24%);
+  --sf-br-3: hsl(120 60% 30%);
+  --sf-br-4: hsl(200 80% 32%);
+  --sf-br-5: hsl(270 65% 44%);
+  --sf-br-6: hsl(320 70% 40%);
+}
+
+/* 暗色主题：整体提亮，保证深底上可辨（色相与亮色主题一一对应） */
+:root[data-theme="dark"] .sf-editor[data-rainbow="on"] {
+  --sf-br-1: hsl(0 90% 68%);
+  --sf-br-2: hsl(60 85% 62%);
+  --sf-br-3: hsl(120 70% 60%);
+  --sf-br-4: hsl(200 90% 68%);
+  --sf-br-5: hsl(270 85% 74%);
+  --sf-br-6: hsl(320 85% 72%);
+}
+
+.sf-editor[data-rainbow="on"] .sf-br--1 {
+  color: var(--sf-br-1);
+}
+
+.sf-editor[data-rainbow="on"] .sf-br--2 {
+  color: var(--sf-br-2);
+}
+
+.sf-editor[data-rainbow="on"] .sf-br--3 {
+  color: var(--sf-br-3);
+}
+
+.sf-editor[data-rainbow="on"] .sf-br--4 {
+  color: var(--sf-br-4);
+}
+
+.sf-editor[data-rainbow="on"] .sf-br--5 {
+  color: var(--sf-br-5);
+}
+
+.sf-editor[data-rainbow="on"] .sf-br--6 {
+  color: var(--sf-br-6);
+}
+
 /* --------------------------------------------------- 命中 / 括号匹配标记 */
 
+/* 硬性要求（v1.7.15，§13.4）：高亮层的标记都是 `<mark>`，而浏览器 UA 样式自带
+   `mark { color: MarkText }`（Chromium 在本页解析为**纯黑**）—— 暗色主题下会变成
+   「黑字压深底」（实测对比度 1.38:1，无法辨认）。故**必须显式声明文字色**：
+   统一继承高亮层文字色（=`--text-body`），标记内部 token span 各自的着色不受影响。
+   标记只负责底色；**不得**依赖 UA 默认色，也不得给标记改字号 / 字重 / 边框
+   （会破坏与透明 textarea 的度量对齐）。 */
+.sf-highlight mark {
+  color: inherit;
+}
+
 .sf-hit {
-  background: var(--warn-soft);
+  background: var(--sf-hit-bg);
   border-radius: var(--r-xs);
 }
 
 .sf-hit--current {
-  background: var(--accent-soft);
+  background: var(--sf-accent-bg);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .sf-same {
-  background: var(--info-soft);
+  background: var(--sf-same-bg);
   border-radius: var(--r-xs);
+  /* 1px 同色描边（v1.7.17）：把每处「相同文本」的边界画清楚，可见度提升不靠加深底色
+     （加深会压低标记内 token 色的对比度）。**必须是 outline**：不参与布局 ⇒ 不改变字符宽度，
+     不会像行内 border 那样把高亮层文字推右而与透明 textarea 错位（v1.6.5 / §15.5 的度量教训）。
+     搜索命中故意不加描边，以保持「相同文本 vs 搜索命中」可区分。 */
+  outline: 1px solid var(--sf-same-edge);
+  outline-offset: 0;
 }
 
 .sf-bracket {
-  background: var(--accent-soft);
+  background: var(--sf-accent-bg);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .sf-bracket--error {
-  background: var(--danger-soft);
+  background: var(--sf-danger-bg);
   box-shadow: inset 0 0 0 1px var(--danger);
+}
+
+/* 暗色主题：深色底会吞掉浅色底纹（14% 混色在 #121110 上只剩淡淡一层），
+   按 §13.4 的口径把混色比例提到 20% —— 同一语义族（info 蓝 / warn 琥珀 / accent 橙 / danger 红），
+   只是同一颜色的不同浓度，因此与既有配色保持一致。文字色不受影响（始终 color: inherit）。
+   不支持 `color-mix` 时本段整体不生效，自动沿用上面的令牌 soft 色兜底。 */
+@supports (background: color-mix(in srgb, red 50%, transparent)) {
+  .sf-editor {
+    --sf-selection-bg: color-mix(in srgb, var(--accent) 15%, transparent);
+    /* 浅色主题的「相同文本」描边：比暗色轻一档，只用于把边界收清楚 */
+    --sf-same-edge: color-mix(in srgb, var(--info) 32%, transparent);
+  }
+
+  :root[data-theme="dark"] .sf-editor {
+    /* 「相同文本」比其余标记再深一档（24%）：深底会吞掉浅色底纹，而这是最需要一眼扫到的标记。
+       上限见 §13.4：再深就会让标记内的字符串色跌破 AA（实测 24% 时 4.62:1）。 */
+    --sf-same-bg: color-mix(in srgb, var(--info) 24%, transparent);
+    --sf-same-edge: color-mix(in srgb, var(--info) 55%, transparent);
+    --sf-hit-bg: color-mix(in srgb, var(--warn) 20%, transparent);
+    --sf-accent-bg: color-mix(in srgb, var(--accent) 20%, transparent);
+    --sf-danger-bg: color-mix(in srgb, var(--danger) 20%, transparent);
+  }
 }
 
 /* ----------------------------------------------------------- 参数分组 */

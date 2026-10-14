@@ -185,6 +185,12 @@ const SINGLE_OPERATORS = "=<>+-*/%^|&#~!@";
 const BRACKET_PAIRS = { "(": ")", "[": "]", "{": "}" };
 const BRACKET_CLOSERS = { ")": "(", "]": "[", "}": "{" };
 
+/**
+ * 彩虹括号的色相数量（v1.7.16，§13.5）：括号按**嵌套深度**取色，深度 1…6 循环。
+ * 与《公式计算器》§16.13 同口径，便于两个工具的「层级色」语义一致。
+ */
+export const BRACKET_HUE_COUNT = 6;
+
 /** token 类型 → 高亮层 CSS 类（ws / ident 不着色，使用默认文字色） */
 const TOKEN_CLASS = {
   kw: "sf-tok--kw",
@@ -198,6 +204,16 @@ const TOKEN_CLASS = {
   qident: "sf-tok--qident",
   bind: "sf-tok--bind",
 };
+
+/**
+ * 括号的「层级色」类（v1.7.16，§13.5）：深度 1…BRACKET_HUE_COUNT 循环，`sf-br--1` … `sf-br--6`。
+ * 只有括号 token 带 `depth`（由 `tokenize` 记录）；其余 token 返回空串，不着色。
+ * 实际是否上色由 CSS 侧按 `rainbowBrackets` 选项（`.sf-editor[data-rainbow]`）决定 ——
+ * 这样「选项 → 颜色」只有一处实现，渲染层无需感知配置。
+ */
+function bracketDepthClass(token) {
+  return Number.isInteger(token.depth) ? ` sf-br--${((token.depth - 1) % BRACKET_HUE_COUNT) + 1}` : "";
+}
 
 function isIdentStart(ch) {
   return ch !== undefined && IDENT_START_RE.test(ch);
@@ -282,6 +298,8 @@ export function tokenize(sql, dialect) {
   const tokens = [];
   const n = text.length;
   let i = 0;
+  /** 括号嵌套深度：仅括号 token 带 `depth`（从 1 起，§13.5 彩虹括号） */
+  let bracketDepth = 0;
 
   const push = (type, start, end) => {
     tokens.push({ type, value: text.slice(start, end), start, end });
@@ -457,6 +475,16 @@ export function tokenize(sql, dialect) {
     /* 括号与标点 */
     if (BRACKET_PAIRS[ch] || BRACKET_CLOSERS[ch] || ch === "," || ch === ";" || ch === ".") {
       push("punct", i, i + 1);
+      // 括号额外记下嵌套深度（v1.7.16 彩虹括号）：开括号记「进入后的层级」，
+      // 闭括号记「它配对的那个开括号的层级」——同一对括号必然同深度 ⇒ 必然同色。
+      // 未配对的括号仍按所处层级取色（错误态由 sf-bracket--error 承担，与颜色无关）。
+      if (BRACKET_PAIRS[ch]) {
+        bracketDepth += 1;
+        tokens[tokens.length - 1].depth = bracketDepth;
+      } else if (BRACKET_CLOSERS[ch]) {
+        tokens[tokens.length - 1].depth = Math.max(1, bracketDepth);
+        bracketDepth = Math.max(0, bracketDepth - 1);
+      }
       i += 1;
       continue;
     }
@@ -661,7 +689,7 @@ export function renderHighlight(text, tokens, marks, escape) {
     while (next < pieces.length && pieces[next].mark === mark) {
       const piece = pieces[next];
       inner += piece.token
-        ? `<span class="${TOKEN_CLASS[piece.token.type]}">${piece.text}</span>`
+        ? `<span class="${TOKEN_CLASS[piece.token.type]}${bracketDepthClass(piece.token)}">${piece.text}</span>`
         : piece.text;
       next += 1;
     }
@@ -749,6 +777,8 @@ export const DEFAULT_CONFIG = Object.freeze({
   parenNewline: false,
   logicalIndent: true,
   blankLines: "collapse",
+  /** 彩虹括号（v1.7.16，§13.5）：按嵌套深度给成对括号着色；**只影响显示**，不影响格式化（R7 参数化） */
+  rainbowBrackets: true,
 });
 
 const INDENT_STYLES = ["space", "tab"];
@@ -774,6 +804,7 @@ const CONFIG_KEYS = [
   "parenNewline",
   "logicalIndent",
   "blankLines",
+  "rainbowBrackets",
 ];
 
 function pickEnum(value, allowed, fallback) {
@@ -813,6 +844,7 @@ export function normalizeConfig(partial) {
     parenNewline: pickBoolean(source.parenNewline, DEFAULT_CONFIG.parenNewline),
     logicalIndent: pickBoolean(source.logicalIndent, DEFAULT_CONFIG.logicalIndent),
     blankLines: pickEnum(source.blankLines, BLANK_LINE_MODES, DEFAULT_CONFIG.blankLines),
+    rainbowBrackets: pickBoolean(source.rainbowBrackets, DEFAULT_CONFIG.rainbowBrackets),
   };
 }
 
@@ -1733,6 +1765,16 @@ const TEMPLATE = `
             </select>
           </div>
         </div>
+
+        <div class="sf-options__group">
+          <div class="field">
+            <span class="field__label">显示</span>
+            <label class="checkbox">
+              <input type="checkbox" id="sf-rainbow-brackets" />
+              <span>彩虹括号（按嵌套层级着色）</span>
+            </label>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -1887,6 +1929,7 @@ export function init(ctx) {
     logicalIndent: el("#sf-logical-indent"),
     commaPosition: el("#sf-comma-position"),
     blankLines: el("#sf-blank-lines"),
+    rainbowBrackets: el("#sf-rainbow-brackets"),
     actions: {
       format: el('[data-action="format"]'),
       find: el('[data-action="find"]'),
@@ -1988,6 +2031,7 @@ export function init(ctx) {
       parenNewline: nodes.parenNewline.checked,
       logicalIndent: nodes.logicalIndent.checked,
       blankLines: nodes.blankLines.value,
+      rainbowBrackets: nodes.rainbowBrackets.checked,
     });
   }
 
@@ -2007,6 +2051,7 @@ export function init(ctx) {
     nodes.parenNewline.checked = cfg.parenNewline;
     nodes.logicalIndent.checked = cfg.logicalIndent;
     nodes.blankLines.value = cfg.blankLines;
+    nodes.rainbowBrackets.checked = cfg.rainbowBrackets;
     state.syncing = false;
   }
 
@@ -2139,6 +2184,9 @@ export function init(ctx) {
     const input = nodes.input;
     const value = input.value;
     const cfg = readForm();
+    // 彩虹括号开关落到编辑器根节点（v1.7.16）：渲染层始终产出 sf-br--N 类，
+    // 是否上色只由 CSS 依据 data-rainbow 决定 —— 「选项 → 颜色」只有一处实现（§13.5）。
+    if (nodes.editor) nodes.editor.dataset.rainbow = cfg.rainbowBrackets ? "on" : "off";
 
     /* 统计 */
     const lineCount = textUtils.countLines(value);
@@ -2778,7 +2826,7 @@ export function init(ctx) {
     });
   });
 
-  [nodes.clauseNewline, nodes.parenNewline, nodes.logicalIndent].forEach((node) => {
+  [nodes.clauseNewline, nodes.parenNewline, nodes.logicalIndent, nodes.rainbowBrackets].forEach((node) => {
     bind(node, "change", () => {
       if (state.syncing) return;
       markDirty();
