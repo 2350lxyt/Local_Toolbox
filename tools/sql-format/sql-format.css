@@ -337,16 +337,23 @@
   min-height: calc(var(--lh-loose) * 1em);
 }
 
-/* 代码区：高亮层在下（不可交互），透明 textarea 在上（承担编辑） */
+/* 代码区：高亮层在下（不可交互），透明 textarea 在上（承担编辑）。
+   **视口裁剪只在这里做**（overflow:hidden）—— 被平移的高亮层容器不得自带裁剪，见 .sf-scroll。 */
 .sf-code {
   position: relative;
   overflow: hidden;
 }
 
+/* 高亮层容器：纵向滚动 = 用 translateY 平移整个盒子（syncScroll）。
+   v1.7.19 硬性约束：这里**不得**设置 overflow:hidden，也**不得**用 inset:0 把盒子钉成一屏高 ——
+   裁剪矩形会随盒子一起平移，内容里超出「一屏」的部分永远画不出来
+   （症状：SQL 超过编辑器可显示行数后，后面的字符全部不渲染，滚动与行号槽却正常）。
+   盒子高度由内容撑开（只定位 top/left/right），视口裁剪交给外层 .sf-code。 */
 .sf-scroll {
   position: absolute;
-  inset: 0;
-  overflow: hidden;
+  top: 0;
+  left: 0;
+  right: 0;
   will-change: transform;
   pointer-events: none;
 }
