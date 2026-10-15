@@ -2128,20 +2128,33 @@ export function init(ctx) {
     }
   }
 
-  /** 括号匹配标记：仅高亮光标邻近的括号与其配对括号 */
+  /**
+   * 括号匹配标记：光标邻近、或**恰好选中一个**括号字符时，与配对括号共同高亮（v1.7.23）。
+   * 返回的标记**必须按 start 升序**——渲染合并（renderLineHtml 的单指针 markCursor）假定有序，
+   * 目标为闭括号时若把配对的开括号排在后面，开括号所在行会整行漏掉标记（跨行时必现）。
+   */
   function computeBracketMarks() {
     if (state.highlightDisabled || state.bracketTokens.length === 0) return [];
     const input = nodes.input;
-    if (input.selectionStart !== input.selectionEnd) return [];
-
-    const caret = input.selectionStart;
     let target = null;
-    for (const token of state.bracketTokens) {
-      if (token.start === caret) {
-        target = token;
-        break;
+    if (input.selectionStart === input.selectionEnd) {
+      const caret = input.selectionStart;
+      for (const token of state.bracketTokens) {
+        if (token.start === caret) {
+          target = token;
+          break;
+        }
+        if (token.end === caret) target = token;
       }
-      if (token.end === caret) target = token;
+    } else if (input.selectionEnd - input.selectionStart === 1) {
+      // 单字符选区恰好覆盖一个括号：视同「光标在该括号上」（相同文本高亮此时让位，见 refreshSameSelection）
+      const start = input.selectionStart;
+      for (const token of state.bracketTokens) {
+        if (token.start === start) {
+          target = token;
+          break;
+        }
+      }
     }
     if (!target) return [];
 
@@ -2152,10 +2165,10 @@ export function init(ctx) {
     return [
       { start: target.start, end: target.end, className: "sf-bracket" },
       { start: pairStart, end: pairStart + 1, className: "sf-bracket" },
-    ];
+    ].sort((a, b) => a.start - b.start);
   }
 
-  /** 组合三类覆盖标记：搜索命中（优先）→ 选中相同文本 → 括号匹配 */
+  /** 组合三类覆盖标记：搜索命中（优先）→ 选中相同文本 → 括号匹配；输出按 start 升序（v1.7.23） */
   function composeMarks() {
     const marks = [];
     state.matches.forEach((match, index) => {
@@ -2170,6 +2183,7 @@ export function init(ctx) {
       if (!clash) marks.push({ start: match.start, end: match.end, className: "sf-same" });
     });
     computeBracketMarks().forEach((mark) => marks.push(mark));
+    marks.sort((a, b) => a.start - b.start); // 渲染合并（单指针 markCursor）假定有序：乱序会整行漏标记
     return marks;
   }
 
@@ -2297,22 +2311,35 @@ export function init(ctx) {
     });
   }
 
-  /** 选中相同文本全部高亮（限制：非空、单行、长度不超过阈值） */
+  /**
+   * 选中相同文本全部高亮（限制：非空、单行、长度不超过阈值）。
+   * **例外（v1.7.23）**：选区恰好是一个括号字符时让位给「括号匹配」（此时高亮的是配对括号，
+   * 而非全部相同括号），避免两类标记混叠、也让「选择括号 → 高亮配对」的语义成立。
+   */
   function refreshSameSelection() {
     const input = nodes.input;
     const value = input.value;
     const start = input.selectionStart;
     const end = input.selectionEnd;
     const selected = value.slice(start, end);
+    const isSingleBracket =
+      selected.length === 1 &&
+      (BRACKET_PAIRS[selected] !== undefined || BRACKET_CLOSERS[selected] !== undefined);
 
     if (
       state.highlightDisabled ||
       selected === "" ||
       selected === state.sameText ||
       selected.length > MAX_SAME_SELECTION ||
-      selected.includes("\n")
+      selected.includes("\n") ||
+      isSingleBracket
     ) {
-      if (selected === "" || selected.length > MAX_SAME_SELECTION || selected.includes("\n")) {
+      if (
+        selected === "" ||
+        selected.length > MAX_SAME_SELECTION ||
+        selected.includes("\n") ||
+        (isSingleBracket && state.sameText !== "")
+      ) {
         state.sameText = "";
         state.sameMatches = [];
         scheduleRender();
