@@ -136,6 +136,7 @@ const TEMPLATE = `
         <label class="checkbox"><input type="checkbox" data-role="softWrap" /><span>软换行</span></label>
         <label class="checkbox"><input type="checkbox" data-role="inlineHighlight" /><span>行内高亮</span></label>
         <label class="checkbox"><input type="checkbox" data-role="syncScroll" /><span>滚动同步</span></label>
+        <label class="checkbox" title="开启后，两侧输入内容将明文保存在本机浏览器（永不上传）；关闭开关即清除已存草稿"><input type="checkbox" data-draft-enabled /><span>本地草稿</span></label>
       </div>
     </div>
     <div class="td-field td-field--wide">
@@ -274,13 +275,14 @@ const KIND_PREFIX = Object.freeze({ insert: "+", delete: "−", same: " " });
  * @returns {Function} 清理函数：注销全部监听、定时器、rAF 与 ResizeObserver
  */
 export function init(ctx) {
-  const { root, utils, icons } = ctx;
-  const { dom } = utils;
+  const { root, tool, utils, icons } = ctx;
+  const { dom, draft: draftUtils } = utils;
 
   const host = root.querySelector("[data-tool-body]") || root.querySelector("#tool-body");
   if (!host) return () => {};
 
-  const uid = `td-${ctx.instance && ctx.instance.serial ? ctx.instance.serial : 1}`;
+  const serial = ctx.instance && ctx.instance.serial ? ctx.instance.serial : 1;
+  const uid = `td-${serial}`;
   const sessionKey = sessionKeyOf(ctx.instance);
 
   host.innerHTML = TEMPLATE.replace(/(id="|for="|aria-labelledby="|aria-controls=")td-/g, (match, prefix) => `${prefix}${uid}-`).replace(
@@ -337,6 +339,7 @@ export function init(ctx) {
     gutter: { left: el('[data-gutter="left"]'), right: el('[data-gutter="right"]') },
     layer: { left: el('[data-layer="left"]'), right: el('[data-layer="right"]') },
     input: { left: el('[data-input="left"]'), right: el('[data-input="right"]') },
+    draftEnabled: el("[data-draft-enabled]"),
     searchBar: el("[data-search-bar]"),
     optionsToggle: el('[data-action="toggle-options"]'),
     optionsPanel: el("[data-options]"),
@@ -1775,11 +1778,38 @@ export function init(ctx) {
     });
   });
 
+  /* ── 本地草稿 / 会话草稿（v1.7.22，R5 例外之二）：两侧输入共用一个开关 ── */
+  let draftTimer = 0;
+  const scheduleDraftSave = () => {
+    if (draftTimer) window.clearTimeout(draftTimer);
+    draftTimer = window.setTimeout(() => {
+      draftTimer = 0;
+      ["left", "right"].forEach((side) => {
+        draftUtils.saveDraft(tool.id, serial, side, nodes.input[side].value);
+      });
+    }, 180);
+  };
+
+  nodes.draftEnabled.checked = draftUtils.isDraftEnabled(tool.id);
+  bind(nodes.draftEnabled, "change", () => {
+    const enabled = nodes.draftEnabled.checked;
+    draftUtils.setDraftEnabled(tool.id, enabled, serial, ["left", "right"]);
+    if (enabled) {
+      ["left", "right"].forEach((side) => {
+        draftUtils.saveDraft(tool.id, serial, side, nodes.input[side].value);
+      });
+      setStatus("本地草稿已开启：两侧输入内容将明文保存在本机浏览器（永不上传）；关闭开关即清除。", "warn");
+    } else {
+      setStatus("本地草稿已关闭，已清除本机保存的草稿。", "info");
+    }
+  });
+
   /* ── 事件：编辑器输入与滚动 ─────────────────────────────── */
   ["left", "right"].forEach((side) => {
     bind(nodes.input[side], "input", () => {
       state.text[side] = nodes.input[side].value;
       state.currentBlock = -1;
+      scheduleDraftSave();
       scheduleCompute();
     });
     bind(nodes.editor[side], "scroll", () => {
@@ -1952,8 +1982,27 @@ export function init(ctx) {
   state.split = readStoredSplit();
   applySplit();
   placeSearchBars();
+
+  /* 本地草稿 / 会话草稿恢复（v1.7.22）：先恢复再首次计算（会话级优先，其次本地草稿箱） */
+  let draftRestored = "";
+  ["left", "right"].forEach((side) => {
+    const draft = draftUtils.loadDraft(tool.id, serial, side);
+    if (draft.text && draft.text !== nodes.input[side].value) {
+      nodes.input[side].value = draft.text;
+      state.text[side] = draft.text;
+      draftRestored = draft.source;
+    }
+  });
+
   compute();
-  setStatus("把两段文本分别粘进两侧，或把文件拖到对应栏即可开始对比。", "info");
+  setStatus(
+    draftRestored === "session"
+      ? "已恢复本次会话的编辑内容。"
+      : draftRestored === "local"
+        ? "已恢复上次保存的本地草稿。"
+        : "把两段文本分别粘进两侧，或把文件拖到对应栏即可开始对比。",
+    "info"
+  );
 
   return () => {
     Object.keys(timers).forEach(clearTimer);

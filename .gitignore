@@ -50,3 +50,10 @@ tmp/
 /fc-*.cjs
 /fc-*.mjs
 /fc-*.png
+
+# ---------------------------------------------------------------
+# 离线单文件 exe 的构建中间产物（由 scripts/build-portable.ps1 生成；
+# 源码 packaging/csharp/Server.cs 与构建脚本入库，产物不入库，见 §4.C）
+# ---------------------------------------------------------------
+packaging/csharp/web/
+packaging/csharp/web.zip

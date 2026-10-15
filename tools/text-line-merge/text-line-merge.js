@@ -468,6 +468,9 @@ const TEMPLATE = `
           <textarea class="textarea" id="tlm-input" spellcheck="false"
                     placeholder="在此粘贴需要合并的多行文本…" aria-describedby="tlm-input-note"></textarea>
           <p class="field__hint" id="tlm-input-note">示例：第一行 / 第二行 / 第三行</p>
+          <label class="checkbox" title="开启后，输入内容将明文保存在本机浏览器（永不上传）；关闭开关即清除已存草稿">
+            <input type="checkbox" id="tlm-draft-enabled" /><span>本地草稿（本机明文保存）</span>
+          </label>
         </div>
       </div>
       <div class="panel__foot">
@@ -673,9 +676,10 @@ export function init(ctx) {
   const host = root.querySelector("[data-tool-body]") || root.querySelector("#tool-body");
   if (!host) return () => {};
 
-  const { dom, clipboard, text: textUtils } = utils;
+  const { dom, clipboard, text: textUtils, draft: draftUtils } = utils;
 
   // 实例级配置键：同一工具可开多个实例，各自记住自己的参数（docs/DESIGN.md §9.3）
+  const serial = ctx.instance && Number.isInteger(ctx.instance.serial) ? ctx.instance.serial : 1;
   const sessionKey = instanceSessionKey(ctx.instance);
   const readSession = () => loadSession(sessionKey);
   const writeSession = (config, presetId) => saveSession(config, presetId, sessionKey);
@@ -700,6 +704,7 @@ export function init(ctx) {
     error: el("[data-error]"),
     errorText: el("[data-error-text]"),
     input: el("#tlm-input"),
+  draftEnabled: el("#tlm-draft-enabled"),
     inputLines: el("[data-input-lines]"),
     separator: el("#tlm-separator"),
     prefix: el("#tlm-prefix"),
@@ -1288,8 +1293,31 @@ export function init(ctx) {
     applyPreset(nodes.preset.value);
   });
 
+  /* ── 本地草稿 / 会话草稿（v1.7.22，R5 例外之二）── */
+  let draftTimer = 0;
+  const scheduleDraftSave = () => {
+    if (draftTimer) window.clearTimeout(draftTimer);
+    draftTimer = window.setTimeout(() => {
+      draftTimer = 0;
+      draftUtils.saveDraft(tool.id, serial, "input", nodes.input.value);
+    }, 180);
+  };
+
+  nodes.draftEnabled.checked = draftUtils.isDraftEnabled(tool.id);
+  bind(nodes.draftEnabled, "change", () => {
+    const enabled = nodes.draftEnabled.checked;
+    draftUtils.setDraftEnabled(tool.id, enabled, serial, ["input"]);
+    if (enabled) {
+      draftUtils.saveDraft(tool.id, serial, "input", nodes.input.value);
+      setStatus("本地草稿已开启：输入内容将明文保存在本机浏览器（永不上传）；关闭开关即清除。", "warn");
+    } else {
+      setStatus("本地草稿已关闭，已清除本机保存的草稿。", "info");
+    }
+  });
+
   bind(nodes.input, "input", () => {
     scheduleRefresh();
+    scheduleDraftSave();
   });
 
   [nodes.separator, nodes.prefix, nodes.suffix, nodes.escapeChar].forEach((node) => {
@@ -1357,6 +1385,18 @@ export function init(ctx) {
   }
 
   renderPresetOptions();
+  /* 本地草稿 / 会话草稿恢复（v1.7.22）：先恢复再首次计算（会话级优先，其次本地草稿箱） */
+  const restoredDraft = draftUtils.loadDraft(tool.id, serial, "input");
+  if (restoredDraft.text && restoredDraft.text !== nodes.input.value) {
+    nodes.input.value = restoredDraft.text;
+    setStatus(
+      restoredDraft.source === "session"
+        ? "已恢复本次会话的编辑内容。"
+        : "已恢复上次保存的本地草稿。",
+      "info"
+    );
+  }
+
   syncEscapeGroup();
   syncEffects();
   refreshNow();
