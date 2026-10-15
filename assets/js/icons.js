@@ -100,6 +100,12 @@ const PATHS = {
     '<circle cx="5" cy="12" r="1" fill="currentColor"/>' +
     '<circle cx="12" cy="12" r="1" fill="currentColor"/>' +
     '<circle cx="19" cy="12" r="1" fill="currentColor"/>',
+  /* 标签菜单的批量关闭（v1.7.18）：中心方块 + 四角括线 = 「只留这一个」；方框内打叉 = 「全关掉」 */
+  closeOthers:
+    '<rect width="6" height="6" x="9" y="9" rx="1"/>' +
+    '<path d="M4 9V5a1 1 0 0 1 1-1h4"/><path d="M15 4h4a1 1 0 0 1 1 1v4"/>' +
+    '<path d="M20 15v4a1 1 0 0 1-1 1h-4"/><path d="M9 20H5a1 1 0 0 1-1-1v-4"/>',
+  closeAll: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 9 6 6"/><path d="m15 9-6 6"/>',
 
   /* 日期天数计算器 */
   calendar:

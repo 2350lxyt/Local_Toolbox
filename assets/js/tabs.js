@@ -8,10 +8,10 @@
  *   3. 重复打开时显示名自动追加数字后缀（「文本名 (2)」…），原标签名称与内容不变；
  *   4. 标签可手动重命名（双击 / 菜单 / F2），允许重名，输入时实时显示；
  *   5. 面板常驻保活：切换标签只改可见性，绝不重建 DOM 或重复 init() —— 输入内容因此不丢；
- *   6. 两段式关闭、拖拽排序、拖到画面右侧并排显示（最多两栏）、实例数量上限；
+ *   6. 两段式关闭（单个与**批量**同一套确认纪律）、拖拽排序、拖到画面右侧并排显示（最多两栏）、实例数量上限；
  *   7. 标签溢出时，标签栏两端提供向前/向后滚动按钮（只滚动视图，不改变激活标签）；
  *   8. 布局持久化（仅实例 id / 工具 id / 显示名 / 顺序 / 分栏 / 激活，绝不含任何输入内容）与 hash 直链；
- *   9. 无障碍：tablist 语义、roving tabindex、方向键 / F2 / Delete、标签菜单（拖拽的键盘等价路径）。
+ *   9. 无障碍：tablist 语义、roving tabindex、方向键 / F2 / Delete、标签菜单（拖拽与**批量关闭**的键盘等价路径）。
  *
  * 契约与设计依据：docs/DESIGN.md §2.6 / §4.1 / §4.2 / §4.4 / §5.2 / §6 / §7 / §8.1 / §9.3。
  * 本文件不包含任何具体工具的业务逻辑。
@@ -37,6 +37,18 @@ export const HOME_ID = "home";
 /** 标签栏滚动按钮：一次滚动「一屏」的比例与最小像素（§4.4 / §6） */
 export const TAB_SCROLL_RATIO = 0.8;
 export const TAB_SCROLL_MIN = 120;
+
+/**
+ * 标签菜单里的**批量关闭**动作（v1.7.18，§4.4 / §6）。
+ * `key` 是动作标识（同时用于「待确认态是否仍是同一项」的判定），`label` 是菜单文案，`icon` 是图标名。
+ * 顺序即菜单顺序；没有目标的动作**不渲染**（不向用户承诺做不到的操作）。
+ */
+const BULK_CLOSE_ACTIONS = [
+  { key: "others", label: "关闭其他标签", icon: "closeOthers" },
+  { key: "left", label: "关闭左侧标签", icon: "chevronLeft" },
+  { key: "right", label: "关闭右侧标签", icon: "chevronRight" },
+  { key: "all", label: "关闭所有标签", icon: "closeAll" },
+];
 
 /** 布局持久化版本（v1 = 工具 id 数组；v2 = 实例记录；v3 = 含首页保留标识，见 §8.1） */
 const LAYOUT_VERSION = 3;
@@ -193,6 +205,12 @@ export function createTabsWorkspace(options = {}) {
   let menuAnchor = null;
   let armedCloseId = "";
   let armTimer = 0;
+  /**
+   * 菜单内**批量关闭**的待确认态（v1.7.18，§6）：`{ key, label, ids, anchorId, item, timer } | null`。
+   * 一次批量动作会同时丢掉多个标签的输入，因此与单个关闭同属「两段式确认」——首次点击只进入待确认态，
+   * 再次点击才真的关；`CLOSE_CONFIRM_MS` 超时复位，`Esc` 或关闭菜单即撤销。
+   */
+  let armedBulk = null;
   let toastTimer = 0;
   let dragId = "";
   let scrollSyncRaf = 0;
@@ -877,6 +895,24 @@ export function createTabsWorkspace(options = {}) {
     syncActiveUI();
   }
 
+  /**
+   * 摘除实例：退出重命名、执行**它自己**的清理函数、移除标签与面板节点、从记录表除名。
+   * 只做「拆」的动作，**不碰** `state` 顺序、激活、渲染与播报 —— 单个关闭与批量关闭共用（v1.7.18）。
+   */
+  function detachInstance(record) {
+    if (record.renaming) endRename(record, { restoreFocus: false });
+    if (record.panel) {
+      try {
+        if (typeof record.panel.cleanup === "function") record.panel.cleanup();
+      } catch (error) {
+        console.error(`[toolbox] 实例「${record.name}」清理失败：`, error);
+      }
+      record.panel.el.remove();
+    }
+    if (record.tab) record.tab.el.remove();
+    instances.delete(record.id);
+  }
+
   /** 关闭实例：执行清理函数、摘除节点、把激活权交给右邻（无则左邻，最后回落到首页） */
   function closeInstance(id) {
     const record = nodeSetFor(id);
@@ -884,22 +920,11 @@ export function createTabsWorkspace(options = {}) {
     const paneId = paneOf(id);
     if (!paneId) return;
 
-    if (record.renaming) endRename(record, { restoreFocus: false });
-
     const list = state.panes[paneId];
     const index = list.indexOf(id);
     const label = record.name;
 
-    if (record.panel) {
-      try {
-        if (typeof record.panel.cleanup === "function") record.panel.cleanup();
-      } catch (error) {
-        console.error(`[toolbox] 实例「${label}」清理失败：`, error);
-      }
-      record.panel.el.remove();
-    }
-    if (record.tab) record.tab.el.remove();
-    instances.delete(id);
+    detachInstance(record);
 
     list.splice(index, 1);
     state.active[paneId] = list[index] || list[index - 1] || (paneId === "primary" ? HOME_ID : "");
@@ -910,6 +935,90 @@ export function createTabsWorkspace(options = {}) {
     renderTabs();
     syncActiveUI();
     toast(`已关闭「${label}」`, "ok");
+  }
+
+  /**
+   * 批量关闭的目标集合（v1.7.18，§4.4「批量关闭」）。
+   * - `others` / `all` 取**全部栏**口径：工具标签集合是全局的（同一标签栏视觉上可拆成两栏，但集合只有一份）；
+   * - `left` / `right` 取**锚点所在栏**口径：左右顺序只在栏内定义，跨栏没有「左右」可言；
+   * - 首页标签永不在集合内（常驻保留标签，不可关闭）。
+   * @param {"others"|"left"|"right"|"all"} kind
+   * @param {string} anchorId 打开菜单（或右键）的那个标签的实例 id
+   * @returns {string[]} 待关闭的实例 id（可能为空数组：调用方据此不渲染该项）
+   */
+  function bulkCloseTargets(kind, anchorId) {
+    if (kind === "all") return instanceIds();
+    if (kind === "others") return instanceIds().filter((id) => id !== anchorId);
+
+    const paneId = paneOf(anchorId);
+    const list = paneId ? state.panes[paneId] : [];
+    const at = list.indexOf(anchorId);
+    if (at < 0) return [];
+    const side = kind === "left" ? list.slice(0, at) : list.slice(at + 1);
+    return side.filter((id) => id !== HOME_ID);
+  }
+
+  /**
+   * 批量关闭：一次摘除多个实例，并**只重排一次、只落盘一次、只播报一次**（v1.7.18，§4.4 / §6）。
+   * 接任规则与单个关闭同源，但多一个优先级：**锚点标签**（打开菜单的那一个）存活时优先接管激活；
+   * 锚点也被关掉时，按「原激活项的右邻 → 左邻 → 栏内首项 → 首页」回落（与单个关闭的接任规则一致）。
+   * 激活项本身存活时**不夺权**（不把激活抢给锚点）。
+   * 焦点一律落到**当前激活标签**的 `.tab__main`：既不让焦点悬在已隐藏的菜单项上，
+   * 也不把焦点放到 `tabindex="-1"` 的非激活标签上（roving tabindex，§7）。
+   * @param {string[]} ids 目标实例 id（首页 / 不存在 / 已关闭的一律忽略）
+   * @param {string} [anchorId] 锚点标签 id
+   * @returns {number} 实际关闭的数量
+   */
+  function closeInstances(ids, anchorId = "") {
+    const targets = (Array.isArray(ids) ? ids : []).filter((id) => {
+      const record = nodeSetFor(id);
+      return Boolean(record) && !record.home && Boolean(paneOf(id));
+    });
+    if (!targets.length) return 0;
+
+    disarmClose(); // 待确认关闭态可能正指向即将被摘除的标签（其节点随后消失，必须先把态与定时器收掉）
+
+    // 记下「关之前」的每栏顺序与激活项：接任规则要在原序列上找右邻 / 左邻
+    const before = {};
+    PANE_IDS.forEach((paneId) => {
+      before[paneId] = { list: [...state.panes[paneId]], active: state.active[paneId] };
+    });
+
+    targets.forEach((id) => {
+      const record = nodeSetFor(id);
+      const paneId = paneOf(id);
+      if (!record || !paneId) return;
+      const list = state.panes[paneId];
+      const index = list.indexOf(id);
+      if (index >= 0) list.splice(index, 1);
+      detachInstance(record);
+    });
+
+    PANE_IDS.forEach((paneId) => {
+      const list = state.panes[paneId];
+      if (list.includes(state.active[paneId])) return;
+      let next = list.includes(anchorId) ? anchorId : "";
+      const index = before[paneId].list.indexOf(before[paneId].active);
+      for (let i = index + 1; !next && i < before[paneId].list.length; i += 1) {
+        if (list.includes(before[paneId].list[i])) next = before[paneId].list[i];
+      }
+      for (let i = index - 1; !next && i >= 0; i -= 1) {
+        if (list.includes(before[paneId].list[i])) next = before[paneId].list[i];
+      }
+      state.active[paneId] = next || list[0] || (paneId === "primary" ? HOME_ID : "");
+    });
+
+    normalizeState();
+    syncPaneVisibility();
+    renderTabs();
+    syncActiveUI();
+    toast(`已关闭 ${targets.length} 个标签`, "ok");
+
+    const focusRecord = nodeSetFor(activeEntryId());
+    if (focusRecord && focusRecord.tab && focusRecord.tab.main.isConnected) {
+      focusRecord.tab.main.focus();
+    }
+    return targets.length;
   }
 
   /** 移动实例：同栏排序或跨栏并排（§4.4 第 5、6 条；首页不可移动，主栏插入下限为 1） */
@@ -1158,33 +1267,18 @@ export function createTabsWorkspace(options = {}) {
     return item;
   }
 
-  function openMenu(id, anchor) {
-    const record = nodeSetFor(id);
-    if (!deckEl || !anchor || !record || record.home) return;
-    menuAnchor = anchor;
+  function menuSeparator() {
+    return dom.el("div", { className: "tabmenu__sep", attrs: { role: "separator" } });
+  }
 
-    const inSecondary = paneOf(id) === "secondary";
-    deckEl.replaceChildren(
-      menuItem("重命名", "pencil", () => {
-        closeMenu();
-        beginRename(id);
-      }),
-      dom.el("div", { className: "tabmenu__sep", attrs: { role: "separator" } }),
-      menuItem(inSecondary ? "移回主栏" : "在右侧并排显示", "columns", () => {
-        const target = inSecondary ? "primary" : "secondary";
-        closeMenu();
-        moveInstance(id, target, inSecondary ? 0 : null);
-      }),
-      dom.el("div", { className: "tabmenu__sep", attrs: { role: "separator" } }),
-      menuItem("关闭该标签", "close", () => {
-        closeMenu();
-        armClose(id);
-        if (record.tab && record.tab.close) record.tab.close.focus();
-      })
-    );
-
-    deckEl.hidden = false;
-    const anchorRect = anchor.getBoundingClientRect();
+  /**
+   * 把菜单夹回视口内（打开时与**文案变化后**都必须调用）。
+   * 从 `openMenu` 抽出：待确认态文案更长，一旦因此撑宽菜单，位置必须重算，否则靠右打开时会溢出右边缘。
+   * （当前四项的待确认文案未超过 `.tabmenu` 的 `min-width: 184px`，实测菜单宽度不变 —— 属**预防性**处理。）
+   */
+  function placeMenu() {
+    if (!deckEl || deckEl.hidden || !menuAnchor) return;
+    const anchorRect = menuAnchor.getBoundingClientRect();
     const deckRect = deckEl.getBoundingClientRect();
     const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - deckRect.width - 8));
     let top = anchorRect.bottom + 6;
@@ -1193,6 +1287,87 @@ export function createTabsWorkspace(options = {}) {
     }
     deckEl.style.left = `${Math.round(left)}px`;
     deckEl.style.top = `${Math.round(top)}px`;
+  }
+
+  /* 菜单内的批量关闭：**两段式确认**（v1.7.18，§6）—— 动手之前先把「要关掉几个」说清楚 */
+
+  function armBulk(action, ids, anchorId, item) {
+    disarmBulk();
+    disarmClose(); // 两类待确认态不叠加（与「重命名不与关闭确认叠加」同一约定）
+    armedBulk = { key: action.key, label: action.label, ids, anchorId, item, timer: 0 };
+    item.classList.add("is-armed");
+    item.lastElementChild.textContent = `确认关闭 ${ids.length} 个标签`;
+    armedBulk.timer = window.setTimeout(disarmBulk, CLOSE_CONFIRM_MS);
+    placeMenu();
+    toast(`再次点击「${action.label}」即可关闭 ${ids.length} 个标签。`, "warn");
+  }
+
+  function disarmBulk() {
+    if (!armedBulk) return;
+    const { timer, item, label } = armedBulk;
+    armedBulk = null;
+    if (timer) window.clearTimeout(timer);
+    if (!item) return;
+    item.classList.remove("is-armed");
+    item.lastElementChild.textContent = label;
+  }
+
+  function openMenu(id, anchor) {
+    const record = nodeSetFor(id);
+    if (!deckEl || !anchor || !record || record.home) return;
+    disarmBulk(); // 重新打开菜单 = 上一轮待确认态作废（不跨菜单存活）
+    menuAnchor = anchor;
+
+    const inSecondary = paneOf(id) === "secondary";
+    const nodes = [
+      menuItem("重命名", "pencil", () => {
+        closeMenu();
+        beginRename(id);
+      }),
+      menuSeparator(),
+      menuItem(inSecondary ? "移回主栏" : "在右侧并排显示", "columns", () => {
+        const target = inSecondary ? "primary" : "secondary";
+        closeMenu();
+        moveInstance(id, target, inSecondary ? 0 : null);
+      }),
+      menuSeparator(),
+      menuItem("关闭该标签", "close", () => {
+        closeMenu();
+        armClose(id);
+        if (record.tab && record.tab.close) record.tab.close.focus();
+      }),
+    ];
+
+    // 批量关闭（v1.7.18，§4.4 / §6）：**没有目标的一项不渲染** —— 与「只有在确实可并排时才浮现投放区」
+    // 同一原则，不向用户承诺做不到的操作。
+    const bulk = BULK_CLOSE_ACTIONS.map((action) => ({
+      action,
+      ids: bulkCloseTargets(action.key, id),
+    })).filter((entry) => entry.ids.length > 0);
+
+    if (bulk.length) {
+      nodes.push(menuSeparator());
+      bulk.forEach(({ action, ids }) => {
+        nodes.push(
+          menuItem(action.label, action.icon, (event) => {
+            const item = event.currentTarget;
+            if (armedBulk && armedBulk.key === action.key) {
+              const targets = armedBulk.ids;
+              const anchorId = armedBulk.anchorId;
+              disarmBulk();
+              closeMenu();
+              closeInstances(targets, anchorId);
+              return;
+            }
+            armBulk(action, ids, id, item);
+          })
+        );
+      });
+    }
+
+    deckEl.replaceChildren(...nodes);
+    deckEl.hidden = false;
+    placeMenu();
     anchor.setAttribute("aria-expanded", "true");
 
     const first = deckEl.querySelector(".tabmenu__item");
@@ -1200,6 +1375,7 @@ export function createTabsWorkspace(options = {}) {
   }
 
   function closeMenu() {
+    disarmBulk(); // 菜单一关，待确认态不悬空（§6）
     if (!deckEl || deckEl.hidden) {
       if (menuAnchor) menuAnchor.setAttribute("aria-expanded", "false");
       menuAnchor = null;
@@ -1459,6 +1635,7 @@ export function createTabsWorkspace(options = {}) {
       if (event.key !== "Escape") return;
       if (dragId) clearDragState();
       if (armedCloseId) disarmClose();
+      if (armedBulk) disarmBulk(); // 菜单内批量关闭的待确认态同样可被 Esc 撤销（§6）
     });
 
     // 直链与浏览器前进后退：hash 只表达「哪个工具」，落在其 serial 最小的实例上（§2.6）
@@ -1546,6 +1723,7 @@ export function createTabsWorkspace(options = {}) {
   function destroy() {
     destroyed = true;
     disarmClose();
+    disarmBulk();
     closeMenu();
     clearDragState();
     if (scrollSyncRaf) {

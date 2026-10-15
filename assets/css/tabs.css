@@ -457,6 +457,17 @@ body[data-dragging="on"] .dropzone {
   color: var(--text-muted);
 }
 
+/* 批量关闭的待确认态（v1.7.18，§6）：与关闭按钮同一套「危险色 + 危险浅底」语义，
+   文案同时变为「确认关闭 N 个标签」—— 状态不靠颜色单独传达（§7） */
+.tabmenu__item.is-armed {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.tabmenu__item.is-armed .icon {
+  color: inherit;
+}
+
 .tabmenu__sep {
   height: 1px;
   margin: var(--sp-1) 0;
