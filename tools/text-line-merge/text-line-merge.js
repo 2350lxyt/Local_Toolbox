@@ -475,6 +475,8 @@ const TEMPLATE = `
       </div>
       <div class="panel__foot">
         <button class="btn btn--ghost" type="button" data-action="clear-input">__I_TRASH__ 清空</button>
+        <button class="btn btn--ghost" type="button" data-action="paste-replace" title="清空输入并粘贴剪贴板内容，随后按当前规则自动合并">__I_COPY__ 清空并粘贴</button>
+        <button class="btn btn--primary" type="button" data-action="paste-copy" title="一键完成：清空输入 → 粘贴剪贴板内容 → 按当前规则合并 → 复制结果">__I_MERGE__ 粘贴并复制结果</button>
         <span class="panel__spacer"></span>
         <span class="panel__hint">快捷键 <kbd>Ctrl</kbd> + <kbd>Enter</kbd> 执行合并</span>
       </div>
@@ -735,6 +737,8 @@ export function init(ctx) {
       download: el('[data-action="download"]'),
       merge: el('[data-action="merge"]'),
       clear: el('[data-action="clear-input"]'),
+    pasteReplace: el('[data-action="paste-replace"]'),
+    pasteCopy: el('[data-action="paste-copy"]'),
     },
     effects: {
       separator: el('[data-effect="separator"]'),
@@ -1250,16 +1254,17 @@ export function init(ctx) {
     refreshNow();
   }
 
+  /** 复制合并结果；@returns {Promise<boolean>} 是否成功（供组合动作串联） */
   async function copyResult() {
     flushPendingRefresh();
     if (state.result === "") {
       setStatus("暂无可复制的结果。", "warn");
-      return;
+      return false;
     }
     const ok = await clipboard.copyText(state.result);
     if (!ok) {
       setStatus("复制失败，请手动选择结果文本复制。", "danger");
-      return;
+      return false;
     }
     clearTimer("copy");
     nodes.actions.copy.innerHTML = `${icons.icon("check", 15)} 已复制`;
@@ -1268,6 +1273,7 @@ export function init(ctx) {
       nodes.actions.copy.innerHTML = `${icons.icon("copy", 15)} 复制结果`;
       nodes.actions.copy.classList.remove("is-ok");
     }, 1500);
+    return true;
   }
 
   function downloadResult() {
@@ -1284,6 +1290,34 @@ export function init(ctx) {
     nodes.input.value = "";
     refreshNow();
     nodes.input.focus();
+  }
+
+  /**
+   * 清空并粘贴（v1.7.24）：剪贴板 → 输入区，走既有 input 链路（自动合并 + 本地草稿保存）。
+   * @param {boolean} copyAfter true = 一键流程：粘贴后同步计算并复制结果
+   */
+  async function pasteReplace(copyAfter) {
+    let text = "";
+    try {
+      text = await clipboard.readText();
+    } catch {
+      text = "";
+    }
+    if (text === "") {
+      // readText 在「未授权 / 非安全上下文 / 剪贴板为空」时都返回空串——此时**不清空输入**，避免丢内容
+      setStatus("剪贴板为空或未获读取授权。可改用 Ctrl+V 粘贴到输入框。", "warn");
+      return;
+    }
+    nodes.input.value = text;
+    nodes.input.dispatchEvent(new Event("input", { bubbles: true }));
+    const lineCount = text.split("\n").length;
+    if (!copyAfter) {
+      setStatus(`已清空并粘贴剪贴板内容（${lineCount} 行 / ${text.length} 字符），已按当前规则合并。`, "ok");
+      nodes.input.focus();
+      return;
+    }
+    const copied = await copyResult();
+    if (copied) setStatus(`已粘贴剪贴板内容（${lineCount} 行），合并结果已复制到剪贴板。`, "ok");
   }
 
   /* ---------------------------------------------------------- 事件 */
@@ -1329,6 +1363,8 @@ export function init(ctx) {
 
   bind(nodes.actions.merge, "click", () => triggerMerge());
   bind(nodes.actions.clear, "click", clearInput);
+  bind(nodes.actions.pasteReplace, "click", () => pasteReplace(false));
+  bind(nodes.actions.pasteCopy, "click", () => pasteReplace(true));
   bind(nodes.actions.copy, "click", copyResult);
   bind(nodes.actions.download, "click", downloadResult);
 
