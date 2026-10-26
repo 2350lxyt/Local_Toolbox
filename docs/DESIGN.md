@@ -4,9 +4,29 @@
 > 后续任何功能调整都必须先比对本文档；若确需改变既定设计，**必须先更新本文档并写明变更理由**，再改动代码。
 > 提交信息的正文中请引用相关章节（例如 `refs docs/DESIGN.md §10.3`）。
 
-- 文档版本：1.7.24
-- 最近更新：2026-10-15
+- 文档版本：1.7.25
+- 最近更新：2026-10-26
 - 对应代码版本：v0.1.0
+
+> **v1.7.25 变更摘要（B 级 · 《公式计算器》负数取值、去取值一键还原、变量取值解析开关）**：
+> ① **负数取值（§16.3 规则①）**：变量名后**紧跟**负号（其后允许空白）且随后是数字时，负号计入取值 ——
+> `基准价295+调价-7.38` → `调价 = -7.38`（原样 `-7.38`）、求值 `287.62`；`折扣-15%` → `-15%`（折算 -0.15）。
+> 负号与名之间有空白（`调价 - 7.38`）或负号后是变量名（`A1-B2`）→ **仍按减法**。取值在**词法层**吸收，
+> 因此预填、去取值公式、着色、分步、求值全链路自动一致。
+> ② **语义变更（必须知晓）**：`X-5` 由「X 减常数 5」变为「X 的取值为 -5」。逃逸路径两条：
+> `(X)-5`（括号阻断贴名）或关闭下条的「变量取值解析」开关。
+> ③ **新增选项 `extractValues`「变量取值解析」（§16.2，默认开）**：关闭后变量名后的数字一律按独立数值处理
+> （`X-5` 即减法、`X5` 报「缺少运算符」），供纯变量公式场景使用；核心 API 统一增加 `options` 参数
+> （`tokenize/parseFormula/analyzeFormula/extractVariables/evaluateFormula/explainSteps/annotateFormula`，
+> 默认值保持既有行为、旧调用零改动），UI 从配置取同值传给切词与着色，**杜绝两处口径分叉**。
+> ④ **新增「替换输入公式」按钮 + 纯函数 `stripEmbeddedValues()`**（§16.5 / §16.11）：「公式（去掉取值）」行
+> 右侧一键把输入还原为变量形式（`基准价295+调价-7.38` → `基准价 + 调价`），变量表已填值**
+> 保留**（预填只填空格/仍为自动值的格，用户手改过的归用户）。
+> ⑤ **实测（Node 断言 26 条 + 无头 Chromium 驱动离线 exe 13 条）**：负数预填/去取值/287.62/分步、
+> 百分比负数、空格减法、`(X)-5` 逃逸、`A5-3`、`A1-B2`、`a1b2` 报错、取值冲突、千分位与百分号组合、
+> 着色逐字符覆盖；UI：预填、替换后变量表保留、改值联动 277.62、开关关闭后 `X-5=5` 且配置持久化、
+> 重新开启后恢复负数取值。
+> 受影响章节：§16.2 / §16.3 / §16.4 / §16.5 / §16.11 / README《公式计算器》。
 
 > **v1.7.24 变更摘要（B 级 · 《文本行合并》新增「清空并粘贴」「粘贴并复制结果」快捷按钮）**：
 > ① 输入面板底部「清空」旁新增两钮：「**清空并粘贴**」（剪贴板 → 输入区，走既有 input 链路——
@@ -2387,9 +2407,11 @@ export function highlightSegments(line, languageId, wordSegments); // 语法着�
 | `autoFillFromFormula` | `true` | 布尔 | 是否把公式里「标识符+数值」的取值自动填进变量表第一行；关闭时只提取变量名、取值留空 |
 | `syntaxHighlight` | `true` | 布尔 | 是否给公式着色（彩虹括号 + 变量配色，见 §16.13）。**只影响显示**，不影响解析与求值；按 R7「功能行为参数化」设此开关 |
 | `restoreLastOnMount` | `true` | 布尔 | 面板挂载时是否用历史里**最近一条**把公式与变量表带回来（§16.7，v1.7.6）。历史为空时静默；关闭后从空白开始 |
+| `extractValues` | `true` | 布尔 | **变量取值解析**（v1.7.25）：开启时「变量名后紧跟的数字」算它的取值（含负数 `调价-7.38` → `-7.38`）；关闭后变量名后的数字一律按**独立数值**处理（`X-5` 即 `X` 减 5、`X5` 报「缺少运算符」）。服务于「公式是纯变量组合、不使用贴名取值」的场景（R7 参数化优先） |
 
 - 参数持久化到 `toolbox:formula-calc:config`（**按实例分区**，§9.3 第 7 条）：`serial >= 2` 用 `toolbox:formula-calc:config:<serial>`。
-- **不新增冗余开关**（§14.2 教训）：解析规则、取值规则、分步口径都是**硬性约定**而非参数。
+- **不新增冗余开关**（§14.2 教训）：解析规则、分步口径都是**硬性约定**而非参数；取值规则本身也是硬性的，
+  **唯一例外是 v1.7.25 的 `extractValues`**（整体开关「贴名取值」，因为负数取值与「减常数」在语法上天然歧义，§16.3）。
   `autoFillFromFormula` 只影响「是否预填」，**不影响**「末尾数字即取值」这条语义
   （`单价10` 永远是「变量 `单价`、取值 10」，**不是**乘法）。
 
@@ -2425,6 +2447,20 @@ export function highlightSegments(line, languageId, wordSegments); // 语法着�
 | `x2y3` | ❌ 同上报错 |
 | `100` | 不是变量，是数值 |
 
+- **负数取值（v1.7.25，硬性）**：**负号紧跟变量名**（负号与名之间不得有空白）且其后紧跟数字时，
+  负号计入取值：`调价-7.38` → 变量 `调价`、取值 `-7.38`（原样 `-7.38`）；`折扣-15%` → 折算 `-0.15`、原样 `-15%`。
+  **负号与名之间有空白**（`调价 - 7.38`）或负号后不是数字（`调价 - 运费`）→ 仍按**减法**解析。
+
+| 输入 | 解析结果 |
+| --- | --- |
+| `基准价295+调价-7.38` | 取值 `基准价=295`、`调价=-7.38`；去取值公式 `基准价 + 调价` |
+| `折扣-15%` | 取值 `折扣=-15%`（折算 -0.15） |
+| `调价 - 7.38` | 变量 `调价`（无取值）、减去常数 `7.38` |
+| `(调价)-5` | 变量 `调价`、减去常数 `5`（括号阻断贴名） |
+| `A1-B2` | 取值 `A=1`、`B=2`，公式 `A - B`（负号后是变量名，不是数字） |
+
+- **语义变更（v1.7.25，必须显式知晓）**：`X-5` 由「X 减常数 5」变为「X 的取值为 -5」。
+  仍要表达「减常数」有两条逃逸路径：① `(X)-5`（括号阻断贴名）；② 关闭选项「变量取值解析」（§16.2 `extractValues`）。
 - 因此**变量名既不含数字、也不会以数字结尾**（比 R 级要求「不以数字结尾」更严，换来规则唯一、无歧义）。
   纯数字不是变量；单独一个 `_` 是合法变量名。
 - **需要在名字里区分同类的两个变量时，用字母或下划线**：例如 `单价A10*单价B20`（两个不同变量、各自取值），
@@ -2482,11 +2518,19 @@ export function highlightSegments(line, languageId, wordSegments); // 语法着�
 - 变量 chips 显示：变量名 + 出现次数 + 从公式提取到的取值（如 `单价 = 10`）。
 - 上限：变量数 `MAX_VARIABLES = 40`、数据行数 `MAX_ROWS = 200`；超限给出可读提示并阻止继续添加（不静默截断）。
 
+- **负数预填与「替换输入公式」（v1.7.25）**：负数取值（`调价-7.38`）按原样 `-7.38` 预填；
+  点「替换输入公式」把公式还原为变量形式后，公式**不再带取值**，预填同步自然停止 ——
+  变量表里已填的值（含用户手改过的）**一律保留**，不得因替换而清空或回退（§16.5）。
+
 ### 16.5 分步算法与步骤口径
 
 - **先展示「变量形式公式」，再展示代入过程（v1.7.1，硬性）**：面板里第一行固定是**过滤掉取值后的公式**
   （`单价10*数量25` → 显示 `单价 × 数量`），其后才是「变量替换」与逐步化简 —— 这样「替换前 vs 替换后」
   可以直接上下对照，核对「取得对不对」。该行同时是**着色基准行**（§16.13）：变量与括号在这一行就上色。
+- **「替换输入公式」（v1.7.25）**：该行右侧提供一个小按钮，把输入框里的公式替换为**去取值的变量形式**
+  （`基准价295+调价-7.38` → `基准价 + 调价`），用于「只调变量表、不被原公式里的旧数字干扰」；
+  替换后**变量表已填值保留**、结果不变（值来自表格）。实现**必须复用纯函数 `stripEmbeddedValues()`**
+  （与显示层同源口径），不得在 UI 里另写一套字符串处理。替换属用户显式动作，不自动发生。
 - **显示层的运算符符号**：屏幕上一律显示 `×` / `÷`（输入层同时接受 `*` / `/` 与 `×` / `÷`，见 §16.3）。
   这可读性改造只发生在**渲染**上：token 与求值仍用 `*` / `/`，不改语义。
 - **做法**：**AST 逐步化简**，而不是记录求值日志。每步挑选「**当前可求值的最内层且最高优先级**」的节点，
@@ -2648,16 +2692,21 @@ export function highlightSegments(line, languageId, wordSegments); // 语法着�
 
 ```js
 export function normalizeFormula(text)              // -> string（全角转半角、同义符号归一、删除千分位逗号）
-export function tokenize(text)                      // -> { ok, tokens } | { ok:false, code, error, index }
-export function parseFormula(text)                  // -> { ok, ast } | 错误
-export function analyzeFormula(text)                // -> { ok, ast, variables, formula, formulaSegments }（UI 主入口，一次拿齐语法与变量）
-export function extractVariables(text)              // -> { ok, variables: [{ name, count, prefill, prefillRaw }] }
-export function evaluateFormula(text, values)       // -> { ok, value } | { ok:false, code, error, missing? }
-export function explainSteps(text, values)          // -> { ok, steps, formulaSegments, result, resultText }
-export function annotateFormula(text)               // -> { ok, segments }（按**原文**切段，供输入框着色用）
+export function tokenize(text, options?)            // -> { ok, tokens } | { ok:false, code, error, index }
+export function parseFormula(text, options?)        // -> { ok, ast } | 错误
+export function analyzeFormula(text, options?)      // -> { ok, ast, variables, formula, formulaSegments }（UI 主入口，一次拿齐语法与变量）
+export function extractVariables(text, options?)    // -> { ok, variables: [{ name, count, prefill, prefillRaw }] }
+export function evaluateFormula(text, values, options?)  // -> { ok, value } | { ok:false, code, error, missing? }
+export function explainSteps(text, values, options?)     // -> { ok, steps, formulaSegments, result, resultText }
+export function annotateFormula(text, options?)     // -> { ok, segments }（按**原文**切段，供输入框着色用）
+export function stripEmbeddedValues(text, options?) // -> string（去取值的变量形式纯文本；解析失败或 extractValues:false 时原样返回，v1.7.25）
 export function formatNumber(value)                 // -> string
 export function parseCellValue(text)                // -> { ok, value, raw, empty } | 错误
 ```
+
+- **`options.extractValues`（v1.7.25）**：所有解析入口统一接受该选项（默认 `true`，缺省即既有行为）。
+  **核心不得自己读配置** —— UI 从 `state.config.extractValues` 取值后显式传入（§16.2），
+  切词与着色必须传同一个值，否则会出现「着色与解析分叉」（§16.13 的教训）。
 
 - **着色所需的全部信息都由核心提供**（§16.13）：UI **不得**自己再解析一遍公式。
   - `annotateFormula(text)` 的 `segments` 覆盖**原文的每一个字符**（含空格），每段形如

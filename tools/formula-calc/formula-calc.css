@@ -781,6 +781,14 @@
   color: var(--text-muted);
 }
 
+/* 「替换输入公式」小按钮（v1.7.25）：与块标签同一行，靠右；不抢标签的视觉层级 */
+.fc-block__label .btn {
+  margin-left: auto;
+  padding: 2px var(--sp-2);
+  font-size: var(--fs-xs);
+  min-height: 0;
+}
+
 .fc-formula-line {
   margin: 0;
   padding: var(--sp-2) var(--sp-3);

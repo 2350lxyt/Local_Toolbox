@@ -179,12 +179,17 @@ function describeToken(token) {
  * token 类型：`number` / `var`（可带 `value` / `valueText`，即「名字后紧跟的数字」= 取值）/
  * `op` / `paren` / `percent`。归一化后的下标会映射回原文下标。
  */
-export function tokenize(input) {
+export function tokenize(input, options = {}) {
   const source = String(input ?? "");
   const { text, map } = normalizeWithMap(input);
   if (text.length > MAX_FORMULA_LEN) {
     return fail(ERROR_CODES.tooLong, `公式过长（${text.length} 个字符，上限 ${MAX_FORMULA_LEN} 个字符）`);
   }
+
+  // v1.7.25「变量取值解析」开关（默认开，§16.2/§16.3）：
+  // 关闭后变量名后**不吸收任何数字**（正、负都不吸），文法回到纯运算符模式 ——
+  // `X-5` 即「X 减 5」、`X5` 报「缺少运算符」（与 `a1b2` 同口径）。
+  const extractValues = options.extractValues !== false;
 
   const tokens = [];
   const at = (position) => (Number.isInteger(map[position]) ? map[position] : position);
@@ -217,19 +222,34 @@ export function tokenize(input) {
 
       // 名字之后（**允许空格**，见 §16.3「特例不因空白而失效」）的连续数字是该变量的取值；
       // 数字可再带一个 %，此时取值按 0.01 折算、原样写法记为 `15%`。
+      // v1.7.25：**负号紧跟变量名**（其后允许空白）且随后是数字时，负号计入取值
+      // （`调价-7.38` → -7.38）；负号与名之间有空格（`调价 - 7.38`）仍按减法解析 ——
+      // 「负号是否贴名」就是「取值 / 减法」的判据（§16.3 规则①）。
       let digitsAt = cursor;
-      while (digitsAt < text.length && isWhitespaceChar(text[digitsAt])) digitsAt += 1;
-      const digits = TRAILING_NUMBER_PATTERN.exec(text.slice(digitsAt));
+      let negative = false;
+      if (extractValues && text[cursor] === "-") {
+        let probe = cursor + 1;
+        while (probe < text.length && isWhitespaceChar(text[probe])) probe += 1;
+        if (TRAILING_NUMBER_PATTERN.test(text.slice(probe))) {
+          negative = true;
+          digitsAt = probe;
+        }
+      }
+      if (!negative) {
+        while (digitsAt < text.length && isWhitespaceChar(text[digitsAt])) digitsAt += 1;
+      }
+      const digits = extractValues ? TRAILING_NUMBER_PATTERN.exec(text.slice(digitsAt)) : null;
       if (digits) {
         let end = digitsAt + digits[0].length;
-        let value = Number(digits[0]);
+        let value = Number(digits[0]) * (negative ? -1 : 1);
         if (text[end] === "%") {
           value *= 0.01;
           end += 1;
         }
         // 取值的**原样写法**要从**原文**里切（归一化会删掉千分位逗号）：
-        // 这样 `单价1,000` 预填进变量表的是 `1,000` 而不是 `1000`，用户看到的就是自己写的那串（§16.4）
-        const valueText = source.slice(at(digitsAt), at(end - 1) + 1) || digits[0];
+        // 这样 `单价1,000` 预填进变量表的是 `1,000` 而不是 `1000`，用户看到的就是自己写的那串（§16.4）；
+        // 负数取值从**负号**处起切，预填即 `-7.38`（v1.7.25）。
+        const valueText = source.slice(at(negative ? cursor : digitsAt), at(end - 1) + 1) || digits[0];
         tokens.push({ type: "var", name, value, valueText, start, spaceBefore });
         index = end;
       } else {
@@ -279,9 +299,11 @@ export function tokenize(input) {
  * - `varIndex` = 变量在「首次出现顺序」中的序号；**「变量后紧跟的取值数字」也带该变量的 `varIndex`**
  *   （它就是这个变量的取值，同色更易读）；`depth` = 括号嵌套深度（从 1 起）。
  */
-export function annotateFormula(input) {
+export function annotateFormula(input, options = {}) {
   const source = String(input ?? "");
   const { text, map } = normalizeWithMap(input);
+  // 与 tokenize 同口径的「变量取值解析」开关（v1.7.25）：着色与切词不得分叉
+  const extractValues = options.extractValues !== false;
   const segments = [];
   const variableOrder = new Map();
   const varIndexOf = (name) => {
@@ -338,13 +360,29 @@ export function annotateFormula(input) {
       push(rawStart, map[cursor - 1], "var", { varIndex });
 
       let digitsAt = cursor;
-      while (digitsAt < text.length && isWhitespaceChar(text[digitsAt])) digitsAt += 1;
-      const digits = TRAILING_NUMBER_PATTERN.exec(text.slice(digitsAt));
+      let negative = false;
+      if (extractValues && text[cursor] === "-") {
+        let probe = cursor + 1;
+        while (probe < text.length && isWhitespaceChar(text[probe])) probe += 1;
+        if (TRAILING_NUMBER_PATTERN.test(text.slice(probe))) {
+          negative = true;
+          digitsAt = probe;
+        }
+      }
+      if (!negative) {
+        while (digitsAt < text.length && isWhitespaceChar(text[digitsAt])) digitsAt += 1;
+      }
+      const digits = extractValues ? TRAILING_NUMBER_PATTERN.exec(text.slice(digitsAt)) : null;
       if (digits) {
         let end = digitsAt + digits[0].length;
         if (text[end] === "%") end += 1;
-        if (digitsAt > cursor) push(map[cursor], map[digitsAt - 1], "space");
-        push(map[digitsAt], map[end - 1], "number", { varIndex });
+        if (negative) {
+          // 负号贴名（v1.7.25）：从**负号**起并入取值片段，与 tokenize 的 valueText 同口径
+          push(map[cursor], map[end - 1], "number", { varIndex });
+        } else {
+          if (digitsAt > cursor) push(map[cursor], map[digitsAt - 1], "space");
+          push(map[digitsAt], map[end - 1], "number", { varIndex });
+        }
         index = end;
       } else {
         index = cursor;
@@ -505,8 +543,8 @@ function parseTokens(tokens) {
 }
 
 /** 解析公式（§16.11）。返回 `{ ok, ast }` 或 `{ ok:false, code, error, index }` */
-export function parseFormula(input) {
-  const tokenized = tokenize(input);
+export function parseFormula(input, options = {}) {
+  const tokenized = tokenize(input, options);
   if (!tokenized.ok) return tokenized;
   if (tokenized.tokens.length === 0) return fail(ERROR_CODES.empty, "公式为空");
   return parseTokens(tokenized.tokens);
@@ -571,8 +609,8 @@ function collectVariables(ast) {
  * 一次拿齐「语法 + 变量」：UI 与其余导出函数都以它为基础，避免重复解析。
  * 返回 `{ ok, ast, variables, formula }` 或 `{ ok:false, code, error, index }`。
  */
-export function analyzeFormula(input) {
-  const parsed = parseFormula(input);
+export function analyzeFormula(input, options = {}) {
+  const parsed = parseFormula(input, options);
   if (!parsed.ok) return parsed;
 
   const { variables, conflict } = collectVariables(parsed.ast);
@@ -603,10 +641,64 @@ export function analyzeFormula(input) {
 }
 
 /** 提取变量（§16.4）：按首次出现顺序去重，带上公式里给出的取值（`prefill` / `prefillRaw`） */
-export function extractVariables(input) {
-  const analysis = analyzeFormula(input);
+export function extractVariables(input, options = {}) {
+  const analysis = analyzeFormula(input, options);
   if (!analysis.ok) return analysis;
   return { ok: true, variables: analysis.variables };
+}
+
+/**
+ * 去取值的「变量形式」公式纯文本（v1.7.25，§16.8）。
+ * `基准价295+调价-7.38` → `基准价 + 调价`：供 UI「替换输入公式」按钮把输入直接还原为变量式
+ * （与展示层 `formulaSegments` 同口径：变量名 + 运算符，二元运算符两侧留一个空格）。
+ * **解析失败或关闭取值解析时原样返回**，不做任何猜测性改写。
+ * @param {string} input 原公式
+ * @param {{ extractValues?: boolean }} [options]
+ * @returns {string}
+ */
+export function stripEmbeddedValues(input, options = {}) {
+  const source = String(input ?? "");
+  if (options.extractValues === false) return source;
+  const tokenized = tokenize(source, options);
+  if (!tokenized.ok) return source;
+
+  let out = "";
+  let previous = "start"; // start | operand | operator | open
+  tokenized.tokens.forEach((token) => {
+    if (token.type === "var") {
+      if (previous === "operand") out += " ";
+      out += token.name;
+      previous = "operand";
+      return;
+    }
+    if (token.type === "number") {
+      if (previous === "operand") out += " ";
+      out += token.text;
+      previous = "operand";
+      return;
+    }
+    if (token.type === "percent") {
+      out += "%";
+      previous = "operand";
+      return;
+    }
+    if (token.type === "paren") {
+      if (token.value === "(") {
+        if (previous === "operand") out += " ";
+        out += "(";
+        previous = "open";
+      } else {
+        out += ")";
+        previous = "operand";
+      }
+      return;
+    }
+    // operator：一元位置（开头 / 运算符后 / 左括号后）紧贴操作数，二元位置两侧各一个空格
+    const unary = previous === "start" || previous === "operator" || previous === "open";
+    out += unary ? token.value : ` ${token.value} `;
+    previous = "operator";
+  });
+  return out.trim();
 }
 
 /* ── 求值 ───────────────────────────────────────────────── */
@@ -676,8 +768,8 @@ function evaluateNode(node, values, missing) {
  * 求值（§16.11）。`values` 是 `{ 变量名: 数值 }`（数值或可转数值的字符串均可）。
  * 返回 `{ ok:true, value }` / `{ ok:false, code:'MISSING_VALUES', missing }` / 其它错误。
  */
-export function evaluateFormula(input, values) {
-  const analysis = analyzeFormula(input);
+export function evaluateFormula(input, values, options = {}) {
+  const analysis = analyzeFormula(input, options);
   if (!analysis.ok) return analysis;
   return evaluateNode(analysis.ast, values || {}, []);
 }
@@ -925,8 +1017,8 @@ function capSteps(steps) {
  * 每个步骤含 `{ index, label, expr, detail }`，`expr` 是**化简后的整条算式**；
  * 不变式：任一中间步骤的算式重新求值都必须等于最终结果（验证脚本据此断言）。
  */
-export function explainSteps(input, values) {
-  const analysis = analyzeFormula(input);
+export function explainSteps(input, values, options = {}) {
+  const analysis = analyzeFormula(input, options);
   if (!analysis.ok) return analysis;
   const variableNames = analysis.variables.map((variable) => variable.name);
   if (analysis.variables.length === 0 && analysis.ast.type === "number") {

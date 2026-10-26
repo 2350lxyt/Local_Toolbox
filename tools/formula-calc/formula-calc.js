@@ -29,6 +29,7 @@ import {
   formatNumber,
   normalizeFormula,
   parseCellValue,
+  stripEmbeddedValues,
 } from "./formula-core.js";
 
 /* ── 常量（附录 B 已登记）────────────────────────────────── */
@@ -99,6 +100,8 @@ export function normalizeConfig(raw) {
     autoFillFromFormula: source.autoFillFromFormula !== false,
     syntaxHighlight: source.syntaxHighlight !== false,
     restoreLastOnMount: source.restoreLastOnMount !== false,
+    // v1.7.25：变量取值解析（默认开）—— 关闭后变量名后的数字不再算取值（`X-5` 即 X 减 5，§16.2）
+    extractValues: source.extractValues !== false,
   };
 }
 
@@ -238,6 +241,7 @@ const ICON_TOKENS = Object.freeze({
   __I_DOWNLOAD__: ["download", 15],
   __I_PLUS__: ["plus", 15],
   __I_TRASH__: ["trash", 15],
+__I_SWAP__: ["refresh", 15],
   __I_UPLOAD__: ["upload", 15],
   __I_EMPTY_STEPS__: ["alignLeft", 20],
   __I_EMPTY_TABLE__: ["columns", 20],
@@ -274,6 +278,7 @@ const TEMPLATE = `
         <label class="checkbox"><input type="checkbox" data-config="autoFillFromFormula" /> 从公式自动填值</label>
         <label class="checkbox"><input type="checkbox" data-config="syntaxHighlight" /> 语法着色</label>
         <label class="checkbox"><input type="checkbox" data-config="restoreLastOnMount" /> 打开时恢复上次</label>
+        <label class="checkbox" title="开启时：变量名后紧跟的数字算它的取值（含负数，如 调价-7.38 → -7.38）；关闭时：数字一律按独立数值处理（X-5 即 X 减 5）"><input type="checkbox" data-config="extractValues" /> 变量取值解析</label>
       </div>
     </div>
     <div class="panel__body">
@@ -320,7 +325,15 @@ const TEMPLATE = `
       </div>
 
       <div class="fc-block" data-formula-block hidden>
-        <p class="fc-block__label">公式（去掉取值）</p>
+        <p class="fc-block__label">
+          <span>公式（去掉取值）</span>
+          <button
+            class="btn btn--ghost"
+            type="button"
+            data-action="apply-stripped"
+            title="把上面的公式替换为去掉取值的变量形式（变量表已填的值会保留）"
+          >__I_SWAP__ 替换输入公式</button>
+        </p>
         <p class="fc-formula-line" data-formula-line></p>
       </div>
 
@@ -625,7 +638,7 @@ export function init(ctx) {
       return { kind: "idle", ok: false };
     }
 
-    const result = evaluateFormula(state.formula, values);
+    const result = evaluateFormula(state.formula, values, parseOptions());
     if (result.ok) {
       return { kind: "ok", ok: true, value: result.value, text: formatNumber(result.value), values };
     }
@@ -749,7 +762,9 @@ export function init(ctx) {
     if (!nodes.formulaLayer) return;
     const colored = Boolean(state.config.syntaxHighlight);
     if (nodes.formulaBox) nodes.formulaBox.classList.toggle("is-plain", !colored);
-    nodes.formulaLayer.innerHTML = colored ? segmentsHtml(annotateFormula(nodes.formula.value).segments) : "";
+    nodes.formulaLayer.innerHTML = colored
+      ? segmentsHtml(annotateFormula(nodes.formula.value, parseOptions()).segments)
+      : "";
     autoGrow();
     syncLayerScroll();
   }
@@ -967,7 +982,7 @@ export function init(ctx) {
       return;
     }
 
-    const explained = explainSteps(state.formula, evaluation.values);
+    const explained = explainSteps(state.formula, evaluation.values, parseOptions());
     if (!explained.ok) {
       nodes.steps.hidden = true;
       nodes.stepsEmpty.hidden = false;
@@ -1023,7 +1038,7 @@ export function init(ctx) {
       const parsed = parseCellValue(row[name] === undefined ? "" : row[name]);
       if (parsed.ok && !parsed.empty) values[name] = parsed.value;
     });
-    const result = evaluateFormula(item.formula, values);
+    const result = evaluateFormula(item.formula, values, parseOptions());
     if (result.ok) return { text: formatNumber(result.value), tone: "" };
     if (result.code === ERROR_CODES.missingValues) return { text: "待填写", tone: "" };
     return { text: "无法计算", tone: "is-error" };
@@ -1150,9 +1165,12 @@ export function init(ctx) {
    * 公式**暂时**非法时保留上一次的变量与表格（边打字边闪很难用），只展示错误提示。
    * @returns {Object} 核心的分析结果（供调用方判断错误类型）
    */
+  /** v1.7.25：解析选项（「变量取值解析」开关，§16.2 / §16.3）—— 所有核心调用统一从这里取，避免口径分叉 */
+  const parseOptions = () => ({ extractValues: state.config.extractValues });
+
   function recompute() {
     state.formula = nodes.formula.value;
-    const analysis = analyzeFormula(state.formula);
+    const analysis = analyzeFormula(state.formula, parseOptions());
 
     if (analysis.ok) {
       state.analysis = analysis;
@@ -1441,6 +1459,17 @@ export function init(ctx) {
       recompute();
       return;
     }
+    if (key === "extractValues") {
+      // 开关影响**解析**本身：必须整体重算（变量、预填、着色、分步一起变）
+      recompute();
+      setStatus(
+        value
+          ? "已开启变量取值解析：变量名后紧跟的数字（含负数，如 调价-7.38）算作它的取值。"
+          : "已关闭变量取值解析：变量名后的数字按独立数值处理（X-5 即 X 减 5）。",
+        "info"
+      );
+      return;
+    }
     if (key === "historyEnabled") {
       // 关闭后不写任何存储（§16.7）；已写入的历史保留，由用户自行清空
       setStatus(value ? "已开启历史记录" : "已关闭历史记录：不再写入任何存储", value ? "ok" : "warn");
@@ -1649,6 +1678,20 @@ export function init(ctx) {
     bind(button, "click", copyResult);
   });
   bind(nodes.clearFormula, "click", clearFormula);
+
+  // 「替换输入公式」（v1.7.25）：去掉取值 → 变量形式；变量表已填的值保持不变
+  // （syncRows 只在格子为空、或内容仍是上次自动填入值时才同步，替换后新公式没有取值 ⇒ 不覆盖）
+  bind(host.querySelector('[data-action="apply-stripped"]'), "click", () => {
+    const next = stripEmbeddedValues(nodes.formula.value, parseOptions());
+    if (next === nodes.formula.value) {
+      setStatus("当前公式里没有可移除的取值。", "info");
+      return;
+    }
+    nodes.formula.value = next;
+    clearTimer("compute");
+    recompute();
+    setStatus("已移除取值，公式已还原为变量形式；变量表已填的值保持不变。", "ok");
+  });
   bind(host.querySelector('[data-action="add-row"]'), "click", addRow);
   bind(host.querySelector('[data-action="remove-row"]'), "click", removeRow);
   bind(host.querySelector('[data-action="clear-rows"]'), "click", clearRows);
