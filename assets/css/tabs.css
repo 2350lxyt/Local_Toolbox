@@ -309,12 +309,50 @@ body[data-mode="tabs"] .workspace {
   height: 13px;
 }
 
-/* 两段式关闭的待确认态（§6） */
-.tab__close.is-armed {
-  width: auto;
-  padding: 0 var(--sp-2);
-  color: var(--danger);
+/* 两段式关闭的待确认态（§6）
+   v1.7.27：改为**覆盖整枚标签**。原实现把关闭按钮从 20px 撑到「确认关闭」的宽度，
+   标签跟着变宽、右侧所有标签一起位移 —— 用户点错一次就得重新找目标。
+   现在外层打 .tab.is-armed，按钮绝对定位铺满标签（宽度不再参与布局），标题临时隐藏。
+   文案「确认关闭」保留，状态不只靠颜色传达（§7）。 */
+.tab.is-armed {
+  border-color: var(--danger);
   background: var(--danger-soft);
+}
+
+.tab.is-armed .tab__close {
+  /* 关掉按钮自身的定位，让下面的标签以整枚 .tab 为包含块铺满（不参与布局，宽度不变） */
+  position: static;
+  width: 20px;
+  padding: 0;
+  color: transparent;
+  background: transparent;
+}
+
+.tab.is-armed .tab__close::after {
+  inset: 0;
+}
+
+/* 「确认关闭」铺满整枚标签：文字是状态线索（不只靠颜色，§7），
+   同时把整枚标签变成命中区 —— 用户不用在小按钮上二次瞄准。 */
+.tab.is-armed .tab__close-label {
+  position: absolute;
+  inset: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--danger);
+  border-radius: var(--r-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.tab.is-armed .tab__name,
+.tab.is-armed .tab__icon,
+.tab.is-armed .tab__menu {
+  visibility: hidden;
 }
 
 .tab__close-label {

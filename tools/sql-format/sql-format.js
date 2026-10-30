@@ -1529,6 +1529,9 @@ const TEMPLATE = `
       <option value="postgres">PostgreSQL</option>
     </select>
     <button class="btn btn--primary" type="button" data-action="format">__I_FORMAT__ 格式化</button>
+    <!-- v1.7.27：复制从编辑器页脚提到主操作条 —— 格式化后最常做的下一步就是拿走结果，
+         而工具条是 sticky 的、页脚要滚动才看得见 -->
+    <button class="btn" type="button" data-action="copy" title="复制编辑器中的全部 SQL">__I_COPY__ 复制</button>
     <button class="icon-btn" type="button" data-action="find" title="关键词搜索（Ctrl/Cmd + F）"
             aria-label="关键词搜索">__I_SEARCH__</button>
   </div>
@@ -1637,7 +1640,6 @@ const TEMPLATE = `
       </div>
     </div>
     <div class="panel__foot">
-      <button class="btn" type="button" data-action="copy">__I_COPY__ 复制全部</button>
       <button class="btn" type="button" data-action="download">__I_DOWNLOAD__ 下载为 .sql</button>
       <button class="btn btn--ghost" type="button" data-action="clear">__I_TRASH__ 清空</button>
       <span class="panel__spacer"></span>
@@ -2216,6 +2218,13 @@ export function init(ctx) {
     nodes.statLines.textContent = String(lineCount);
     nodes.statChars.textContent = String(charCount);
     nodes.editorMeta.textContent = `${lineCount} 行 · ${charCount} 字符`;
+
+    /* 复制按钮已迁到工具条（常驻可见），空编辑器时禁用并说明原因，避免点了只弹一句提示 */
+    if (nodes.actions.copy) {
+      const copyDisabled = value === "";
+      nodes.actions.copy.disabled = copyDisabled;
+      nodes.actions.copy.title = copyDisabled ? "编辑器为空，没有可复制的内容" : "复制编辑器中的全部 SQL";
+    }
 
     /* 行首偏移表：供光标定位与滚动定位使用 */
     const lineStarts = [0];
@@ -2805,7 +2814,7 @@ export function init(ctx) {
     nodes.actions.copy.innerHTML = `${icons.icon("check", 15)} 已复制`;
     nodes.actions.copy.classList.add("is-ok");
     timers.copy = window.setTimeout(() => {
-      nodes.actions.copy.innerHTML = `${icons.icon("copy", 15)} 复制全部`;
+      nodes.actions.copy.innerHTML = `${icons.icon("copy", 15)} 复制`;
       nodes.actions.copy.classList.remove("is-ok");
     }, COPY_FEEDBACK_MS);
   }

@@ -99,12 +99,15 @@ const TEMPLATE = `
   </div>
 
   <div class="td-nav" role="group" aria-label="差异导航">
-    <button class="td-icon-btn" type="button" data-action="prev-diff" title="上一个差异（Shift + F7）" aria-label="上一个差异">__I_UP__</button>
-    <button class="td-icon-btn" type="button" data-action="next-diff" title="下一个差异（F7）" aria-label="下一个差异">__I_DOWN__</button>
+    <button class="td-nav-btn" type="button" data-action="prev-diff" title="上一处差异（Shift + F7）"><span class="td-nav-btn__icon" aria-hidden="true">__I_UP__</span>上一处</button>
+    <button class="td-nav-btn" type="button" data-action="next-diff" title="下一处差异（F7）"><span class="td-nav-btn__icon" aria-hidden="true">__I_DOWN__</span>下一处</button>
     <span class="td-nav__count" data-diff-count role="status">无差异</span>
   </div>
 
   <span class="td-topbar__spacer"></span>
+
+  <!-- 软换行：只影响阅读、不改内容，且长行场景必用 —— 从「更多选项」提到工具条（v1.7.27） -->
+  <button class="td-toggle-btn" type="button" data-action="toggle-softwrap" aria-pressed="false" title="长行自动折行显示（只影响显示，不改原文）">软换行</button>
 
   <!-- 搜索条槽位：并排视图下两条搜索条各自挂在所属栏的面板头里（§15.7），
        只读渲染视图（统一 / 折叠）没有面板头，此时临时挂到这个槽位 -->
@@ -191,7 +194,7 @@ const TEMPLATE = `
         <div class="td-gutter" data-gutter="left" aria-hidden="true"></div>
         <div class="td-surface">
           <div class="td-layer" data-layer="left" aria-hidden="true"></div>
-          <textarea class="td-input" data-input="left" spellcheck="false" wrap="off" aria-label="左侧文本"></textarea>
+          <textarea class="td-input" data-input="left" spellcheck="false" wrap="off" placeholder="粘贴或输入左侧文本…" aria-label="左侧文本"></textarea>
         </div>
       </div>
     </section>
@@ -231,7 +234,7 @@ const TEMPLATE = `
         <div class="td-gutter" data-gutter="right" aria-hidden="true"></div>
         <div class="td-surface">
           <div class="td-layer" data-layer="right" aria-hidden="true"></div>
-          <textarea class="td-input" data-input="right" spellcheck="false" wrap="off" aria-label="右侧文本"></textarea>
+          <textarea class="td-input" data-input="right" spellcheck="false" wrap="off" placeholder="粘贴或输入右侧文本…" aria-label="右侧文本"></textarea>
         </div>
       </div>
     </section>
@@ -311,6 +314,7 @@ export function init(ctx) {
     ignoreAllSpace: el('[data-role="ignoreAllSpace"]'),
     ignoreBlankLines: el('[data-role="ignoreBlankLines"]'),
     ignoreLineEnding: el('[data-role="ignoreLineEnding"]'),
+    wrapToggle: el('[data-action="toggle-softwrap"]'),
     diffCount: el("[data-diff-count]"),
     summary: el("[data-summary]"),
     stats: {
@@ -490,6 +494,11 @@ export function init(ctx) {
     nodes.fontSize.value = String(config.fontSize);
     nodes.language.value = config.language;
     nodes.softWrap.checked = config.softWrap;
+    // 工具条上的快捷开关与折叠区里的复选框是同一个设置有两条入口，状态必须同步（v1.7.27）
+    if (nodes.wrapToggle) {
+      nodes.wrapToggle.setAttribute("aria-pressed", String(Boolean(config.softWrap)));
+      nodes.wrapToggle.dataset.on = String(Boolean(config.softWrap));
+    }
     nodes.inlineHighlight.checked = config.inlineHighlight;
     nodes.syncScroll.checked = config.syncScroll;
     nodes.ignoreCase.checked = config.ignoreCase;
@@ -684,10 +693,12 @@ export function init(ctx) {
 
     if (model.lines.length === 0) {
       // 占位行两侧各来一个：保持「行号槽 ↔ 高亮层按下标 1:1 成对」这一不变量（空侧也不破例，
-      // 行高同步依赖它；行号槽的占位行是空的，视觉上与改动前一致）
+      // 行高同步依赖它；行号槽的占位行是空的）。
+      // v1.7.27：占位行**不再画「（空）」** —— 高亮层是 aria-hidden 的绘制层，把「（空）」画在里面
+      // 会被当成正文内容读（视觉上像真的有一行叫「（空）」）。空态交给 textarea 的 placeholder。
       gutterHtml =
         '<div class="td-gutter__row"><span class="td-gutter__mark"></span><span class="td-gutter__num"></span></div>';
-      layerHtml = '<div class="td-row"><span class="td-seg td-tok-plain">（空）</span></div>';
+      layerHtml = '<div class="td-row"></div>';
     }
 
     gutter.innerHTML = gutterHtml;
@@ -814,6 +825,8 @@ export function init(ctx) {
       button.setAttribute("aria-pressed", String(button.dataset.view === state.config.view));
     });
     host.dataset.wrap = state.config.softWrap ? "on" : "off";
+    // 工具条上的软换行开关要跟着渲染刷新（它不在 optionInputs 里，不会被 writeConfigToForm 覆盖到）
+    if (nodes.wrapToggle) nodes.wrapToggle.setAttribute("aria-pressed", String(state.config.softWrap));
     host.style.setProperty("--td-font-size", `${state.config.fontSize}px`);
     // textarea 的换行行为必须与高亮层保持一致：关闭软换行时用 wrap="off"，否则 textarea 会自行折行而与高亮层错位
     ["left", "right"].forEach((side) => {
@@ -1662,6 +1675,14 @@ export function init(ctx) {
       bind(input, "input", () => commitConfig(readConfig()));
     }
   });
+
+  // 工具条上的「软换行」快捷开关：转交给折叠区那个复选框，复用同一条 change 通路（含落盘 + 重算）
+  if (nodes.wrapToggle) {
+    bind(nodes.wrapToggle, "click", () => {
+      nodes.softWrap.checked = !nodes.softWrap.checked;
+      nodes.softWrap.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
 
   qsa("[data-view]").forEach((button) => {
     bind(button, "click", () => {

@@ -265,3 +265,53 @@ button:disabled {
     background-attachment: scroll;
   }
 }
+
+/* ---------- 系统高对比度模式（forced-colors，v1.7.27） ---------- */
+/* 该模式下浏览器会**强制替换**背景与文字色，凡是「只靠底色深浅」表达的信息
+   （当前项、选中态、待确认态、面板边界）都会一起消失。这里统一补形状线索：
+   状态 → 高亮描边，容器 → CanvasText 边框，控件 → ButtonBorder。
+   注意：本模式会丢弃 box-shadow，所以边界一律用 border / outline，不用阴影。 */
+@media (forced-colors: active) {
+  .panel,
+  .tool-card,
+  .notice,
+  .empty,
+  .tabpanel,
+  .td-topbar {
+    border: 1px solid CanvasText;
+  }
+
+  .btn,
+  .icon-btn,
+  .input,
+  .select,
+  .textarea,
+  .td-nav-btn,
+  .td-toggle-btn,
+  .tab__close,
+  .tab__menu {
+    border-color: ButtonBorder;
+  }
+
+  /* 当前项 / 选中 / 待确认：补高亮描边，不再依赖底色差 */
+  .tab.is-active,
+  .tab.is-armed,
+  [aria-pressed="true"],
+  [aria-selected="true"],
+  [aria-expanded="true"] {
+    outline: 1px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  /* 焦点环放在状态描边之后，保证聚焦时一定比状态环更明显 */
+  :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .btn:disabled,
+  .icon-btn:disabled {
+    color: GrayText;
+    border-color: GrayText;
+  }
+}

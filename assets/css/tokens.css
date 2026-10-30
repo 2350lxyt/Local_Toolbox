@@ -186,3 +186,28 @@
 
   --grid-line: rgba(245, 242, 234, 0.055);
 }
+
+/* ---------- 用户偏好：更高对比度（v1.7.27） ---------- */
+/* 系统开了「对比度更高」时，正文与描边整体抬一档：
+   --text-muted 收到接近 body 的深度、--text-faint 抬到原 muted 的水平、
+   发丝线加深到能被看见。整套语义变量不变，组件无需改动。 */
+@media (prefers-contrast: more) {
+  :root {
+    --text-muted: #454034;
+    --text-faint: #6e6757;
+    --hairline: #b3ab9b;
+    --hairline-strong: #8f8674;
+    --bg-hover: rgba(23, 21, 15, 0.09);
+    --bg-active: #f7d9c8;
+    --accent-ring: rgba(194, 65, 12, 0.55);
+  }
+
+  :root[data-theme="dark"] {
+    --text-muted: #d8d1c4;
+    --text-faint: #a8a196;
+    --hairline: #55504a;
+    --hairline-strong: #6f6960;
+    --bg-hover: rgba(245, 242, 234, 0.12);
+    --accent-ring: rgba(232, 112, 31, 0.6);
+  }
+}

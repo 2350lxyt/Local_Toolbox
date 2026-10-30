@@ -45,6 +45,9 @@ body[data-tool] .workspace {
    现在它是标题的行首锚点，任何宽度下都成立，也不再需要 1080px 的翻转变体。 */
 .tool-head__icon {
   flex: 0 0 auto;
+  /* v1.7.27：独立页（tools/*/index.html）里图标仍写在标题之后，靠 order 统一到行首，
+     与标签页（tabs.js 渲染，图标本就在前）保持同一版式 */
+  order: -1;
   display: grid;
   place-items: center;
   width: var(--sp-10);

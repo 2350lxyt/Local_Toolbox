@@ -1229,13 +1229,16 @@ export function createTabsWorkspace(options = {}) {
     if (!record || record.home || !record.tab || !record.tab.close) return;
     armedCloseId = id;
     record.tab.close.classList.add("is-armed");
+    // v1.7.27：待确认态**覆盖整枚标签**而不是把关闭按钮撑宽 —— 后者会让相邻标签一起位移。
+    // 标签外层打 is-armed，由 CSS 把关闭按钮绝对定位铺满、临时隐藏标题（宽度因此不变）。
+    if (record.tab.el) record.tab.el.classList.add("is-armed");
     record.tab.close.innerHTML = `<span class="tab__close-label">确认关闭</span>`;
     dom.setAttrs(record.tab.close, {
       "aria-label": `确认关闭「${record.name}」`,
       title: "再次点击确认关闭",
     });
     armTimer = window.setTimeout(disarmClose, CLOSE_CONFIRM_MS);
-    toast(`再次点击关闭按钮即可关闭「${record.name}」。`, "warn");
+    toast(`再次点击标签上的「确认关闭」即可关闭「${record.name}」。`, "warn");
   }
 
   function disarmClose() {
@@ -1248,6 +1251,7 @@ export function createTabsWorkspace(options = {}) {
     armedCloseId = "";
     if (!record || !record.tab || !record.tab.close) return;
     record.tab.close.classList.remove("is-armed");
+    if (record.tab.el) record.tab.el.classList.remove("is-armed");
     record.tab.close.innerHTML = icon("close", 13);
     dom.setAttrs(record.tab.close, {
       "aria-label": `关闭「${record.name}」`,
