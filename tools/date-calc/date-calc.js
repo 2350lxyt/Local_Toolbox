@@ -861,9 +861,9 @@ const TEMPLATE = `
       </div>
     </div>
     <div class="panel__foot">
-      <button class="btn btn--primary" type="button" data-action="shift-run">推算</button>
+      <button class="btn btn--ghost" type="button" data-action="shift-today">基准日期＝今天</button>
       <span class="panel__spacer"></span>
-      <span class="panel__hint">快捷键 <kbd>Ctrl</kbd> + <kbd>Enter</kbd>；按「工作日」增减会自动跳过休息日</span>
+      <span class="panel__hint">结果随输入实时更新；按「工作日」增减会自动跳过休息日</span>
     </div>
     </div>
 
@@ -1527,7 +1527,9 @@ export function init(ctx) {
       : "—";
   }
 
-  /** 当前页签的主操作（Ctrl/Cmd+Enter 与「推算」按钮共用） */
+  /** 重算当前页签并播报结果（仅 `Ctrl/Cmd + Enter`）。
+   *  v1.7.31 起不再有可见按钮入口：结果本就随输入实时更新，这里只承担「主动播报一次结果」，
+   *  便于读屏用户与键盘操作确认当前值。 */
   function runPrimary() {
     flushPendingRefresh();
     const mode = state.config.mode;
@@ -1792,7 +1794,15 @@ export function init(ctx) {
     refreshNow();
   });
 
-  bind(el('[data-action="shift-run"]'), "click", runPrimary);
+  // v1.7.31：原「推算」主按钮已删除 —— 结果本来随输入实时更新（`scheduleRefresh` → `renderShift`），
+  // 那个按钮只是重算一遍并补一条状态提示，属伪主操作（与《文本行合并》「合并」按钮同构）。
+  // 页脚改为另一个页签都有的「今天」快捷，三个页签的页脚模式就此统一为「快捷操作 + 说明」。
+  // Ctrl/Cmd + Enter 仍走 `runPrimary`，保留「重新计算并播报结果」的无障碍入口。
+  bind(el('[data-action="shift-today"]'), "click", () => {
+    nodes.shiftBase.value = todayISO();
+    refreshNow();
+    setStatus("基准日期已设为今天。", "ok");
+  });
 
   // 页签：点击切换；键盘 ←/→/Home/End（选择随焦点移动，与外壳标签栏一致）
   bind(nodes.modeList, "click", (event) => {

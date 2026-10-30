@@ -104,12 +104,21 @@ body[data-tool] .workspace {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  /* v1.7.31：标题是**标识**，不参与压缩。此前两者都是默认 flex-shrink: 1，
+     容器一变窄，长 hint（如日历覆盖说明）就把标题挤到只剩一个字宽，
+     中文逐字换行后竖排成「中国日 / 历」——与 §5.1 修过的「公式」竖排同源。 */
+  flex: 0 0 auto;
+  white-space: nowrap;
   font-size: var(--fs-h3);
   font-weight: var(--fw-semibold);
   color: var(--text-strong);
 }
 
 .panel__hint {
+  /* 压缩全部由 hint 承担：允许收缩到内容宽以下，靠折行消化，右边缘对齐 */
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   color: var(--text-muted);
@@ -462,5 +471,30 @@ kbd {
 
   .panel__foot .btn {
     flex: 1 1 auto;
+  }
+}
+
+/* v1.7.31：面板头在窄栏下换行 —— 标题与长 hint 并排时，hint 折成两行会紧贴标题，
+   两者挤在同一行且首行几乎无间隙。窄栏改为 hint 独占一行、左对齐，标题单独占首行。
+   同一套规则写两遍：标签工作台按栏宽判定（@container），工具独立页无 pane 容器，由媒体查询兜底。 */
+@container pane (max-width: 640px) {
+  .panel__head {
+    flex-wrap: wrap;
+  }
+
+  .panel__hint {
+    flex-basis: 100%;
+    text-align: left;
+  }
+}
+
+@media (max-width: 640px) {
+  .panel__head {
+    flex-wrap: wrap;
+  }
+
+  .panel__hint {
+    flex-basis: 100%;
+    text-align: left;
   }
 }
