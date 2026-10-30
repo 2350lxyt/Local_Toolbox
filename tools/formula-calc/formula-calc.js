@@ -289,16 +289,21 @@ const TEMPLATE = `
         </label>
         <div class="fc-formula">
           <div class="fc-formula__box">
-            <div class="fc-formula__layer" data-formula-layer aria-hidden="true"></div>
-            <textarea
-              class="fc-formula__input"
-              id="__ID__formula"
-              rows="1"
-              spellcheck="false"
-              autocomplete="off"
-              placeholder="(100+300)*2 或 单价10*数量25*折扣率0.9"
-              data-formula
-            ></textarea>
+            <!-- v1.7.29：叠加层与文本域放进同一个网格单元格 —— 宽度由列宽统一决定，
+                 不再各算各的（原实现叠加层是绝对定位 + width:100%，比文本域宽出两侧内边距，
+                 长公式折行位置就会与光标错位）。 -->
+            <div class="fc-formula__stack">
+              <div class="fc-formula__layer" data-formula-layer aria-hidden="true"></div>
+              <textarea
+                class="fc-formula__input"
+                id="__ID__formula"
+                rows="1"
+                spellcheck="false"
+                autocomplete="off"
+                placeholder="(100+300)*2 或 单价10*数量25*折扣率0.9"
+                data-formula
+              ></textarea>
+            </div>
           </div>
           <button class="btn btn--ghost" type="button" data-action="clear-formula">__I_TRASH__ 清空</button>
         </div>
@@ -744,7 +749,11 @@ export function init(ctx) {
       .join("");
   }
 
-  /** 叠加层随输入框横向滚动一起平移（长公式时两者必须严格同步） */
+  /**
+   * 叠加层随输入框横向滚动一起平移。
+   * v1.7.30 起公式框 `overflow-x: hidden`，文本恒定自动换行 ⇒ `scrollLeft` 恒为 0，
+   * 本函数实际不再产生位移；保留作防御（若将来恢复横向滚动能力，层与文字不能分家）。
+   */
   function syncLayerScroll() {
     if (!nodes.formulaLayer || !nodes.formula) return;
     nodes.formulaLayer.style.transform = `translateX(${-nodes.formula.scrollLeft}px)`;
