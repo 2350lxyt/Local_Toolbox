@@ -221,25 +221,10 @@
   color: var(--text-muted);
 }
 
-/* ------------------------------------------------- 主操作条（合并按钮） */
+/* ------------------------------------------------- 主操作条（已移除） */
 
-/* 紧贴输入面板正下方、横跨左列整宽；本工具唯一的主操作入口 */
-.tlm-action-bar {
-  display: flex;
-  align-items: center;
-}
-
-.tlm-action-bar .btn {
-  flex: 1 1 auto;
-  height: 40px;
-  font-size: var(--fs-body);
-  letter-spacing: 0.02em;
-}
-
-.tlm-action-bar .btn .icon {
-  width: 16px;
-  height: 16px;
-}
+/* v1.7.26：原「合并」主操作条已删除（合并是实时行为，该按钮不改变任何状态）。
+   工具唯一的主色按钮改为结果面板页脚的「复制结果」。 */
 
 /* --------------------------------------------------------------- 结果区 */
 
@@ -264,7 +249,7 @@
     width: clamp(180px, 46vw, 300px);
   }
 
-  /* 折为单列时重排为「输入 → 参数 → 合并 → 输出 → 统计」，
+  /* 折为单列时重排为「输入 → 参数 → 输出 → 统计」，
      避免参数被挤到输出面板之后。
      两个 .panel-stack 用 display:contents 退掉包裹层（均为无语义 div），
      使其子块直接成为 .panel-grid 的弹性项，从而可用 order 重排。 */
@@ -285,16 +270,12 @@
     order: 2;
   }
 
-  .tlm-action-bar {
+  .tlm-result {
     order: 3;
   }
 
-  .tlm-result {
-    order: 4;
-  }
-
   .tlm-block--stats {
-    order: 5;
+    order: 4;
   }
 }
 

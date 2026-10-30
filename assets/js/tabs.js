@@ -601,15 +601,14 @@ export function createTabsWorkspace(options = {}) {
     });
 
     const head = dom.el("header", { className: "tool-head" });
+    // v1.7.26：去掉「工具 / <tool-id>」眉标 —— 工具名已在标签与面包屑出现两次，
+    // 英文 id 对用户无意义，却把表单整体下推约 20px。图标改为标题行首的锚点。
     head.innerHTML =
+      `<div class="tool-head__icon" aria-hidden="true">${icon(tool.icon, 26)}</div>` +
       `<div class="tool-head__main">` +
-      `<div class="tool-head__eyebrow">` +
-      `<p class="meta-label">工具 / ${dom.escapeHtml(tool.id)}</p>` +
-      `</div>` +
       `<h1 class="tool-head__title"></h1>` +
       `<p class="tool-head__desc">${dom.escapeHtml(tool.description)}</p>` +
-      `</div>` +
-      `<div class="tool-head__icon" aria-hidden="true">${icon(tool.icon, 26)}</div>`;
+      `</div>`;
 
     const host = dom.el("div", { attrs: { "data-tool-body": "" } });
     const foot = dom.el("footer", { className: "site-foot", attrs: { "data-site-footer": "" } });
@@ -780,6 +779,8 @@ export function createTabsWorkspace(options = {}) {
       return;
     }
     const list = pane.list;
+    // v1.7.26：钉住的首页标签在列表滚动后需要一道边界线，否则与穿过的标签粘连
+    list.classList.toggle("is-scrolled", list.scrollLeft > 1);
     const overflow = list.scrollWidth - list.clientWidth > 1;
     pane.prevBtn.hidden = !overflow;
     pane.nextBtn.hidden = !overflow;

@@ -656,7 +656,8 @@
 }
 
 .fc-formula__box .fc-formula__input::placeholder {
-  color: var(--text-faint);
+  /* v1.7.26：占位文案是引导信息，用 --text-muted（≥4.5:1） */
+  color: var(--text-muted);
 }
 
 .fc-formula__layer {

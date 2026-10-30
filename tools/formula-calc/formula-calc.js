@@ -285,7 +285,7 @@ const TEMPLATE = `
       <div class="field">
         <label class="field__label" for="__ID__formula">
           <span>公式</span>
-          <span class="field__hint">变量名只用字母、中文或下划线；紧跟在变量名后的数字算它的取值；Enter 计算、Alt+Enter 换行</span>
+          <span class="field__hint">变量名只用字母、中文或下划线；紧跟在变量名后的数字算它的取值；Enter 记入历史、Alt+Enter 换行</span>
         </label>
         <div class="fc-formula">
           <div class="fc-formula__box">
@@ -310,7 +310,7 @@ const TEMPLATE = `
         <span class="fc-result-line__value" data-result-value>—</span>
         <span class="fc-result-line__row" data-result-row></span>
         <span class="panel__spacer"></span>
-        <button class="btn btn--primary" type="button" data-action="commit">__I_CALC__ 计算</button>
+        <button class="btn btn--primary" type="button" data-action="commit" title="按当前变量表结算一次，并把这条公式与整张变量表记入历史">__I_CALC__ 记入历史</button>
         <button class="btn" type="button" data-action="copy-result" disabled>__I_COPY__ 复制</button>
       </div>
 
@@ -434,9 +434,9 @@ const TEMPLATE = `
     <div class="empty" data-history-empty>
       <span class="empty__icon" aria-hidden="true">__I_EMPTY_HISTORY__</span>
       <p class="empty__title" data-history-empty-title>暂无历史记录</p>
-      <p class="empty__text" data-history-empty-text>每次算出结果后会自动记录一条（含整张变量表），最多保留 50 条。</p>
+      <p class="empty__text" data-history-empty-text>点「记入历史」或按 Enter 才会存下一条（含整张变量表），最多保留 __MAX__ 条。</p>
     </div>
-    <p class="fc-history__note">历史保存在本机浏览器，最多 50 条，可随时清空。</p>
+    <p class="fc-history__note">历史保存在本机浏览器，最多 __MAX__ 条，不跨设备同步；可导出备份或随时清空。</p>
     </div>
   </section>
   </div>
@@ -468,10 +468,13 @@ export function init(ctx) {
   const uid = `fc-${ctx.instance && Number.isInteger(ctx.instance.serial) ? ctx.instance.serial : 1}`;
   const storageKey = instanceSessionKey(ctx.instance);
 
-  host.innerHTML = TEMPLATE.replace(/__ID__/g, uid).replace(/__I_\w+__/g, (token) => {
-    const entry = ICON_TOKENS[token];
-    return entry ? icons.icon(entry[0], entry[1]) : "";
-  });
+  // `__MAX__` 由常量注入：历史区文案里的条数上限必须与 MAX_HISTORY 同源，不得手写数字（§16.7）
+  host.innerHTML = TEMPLATE.replace(/__ID__/g, uid)
+    .replace(/__MAX__/g, String(MAX_HISTORY))
+    .replace(/__I_\w+__/g, (token) => {
+      const entry = ICON_TOKENS[token];
+      return entry ? icons.icon(entry[0], entry[1]) : "";
+    });
 
   const el = (selector) => host.querySelector(selector);
   const nodes = {
@@ -484,6 +487,7 @@ export function init(ctx) {
     stepsBlock: el("[data-steps-block]"),
     resultRow: el("[data-result-row]"),
     copyButton: el('[data-action="copy-result"]'),
+    commitButton: el('[data-action="commit"]'),
     formulaMeta: el("[data-formula-meta]"),
     chips: el("[data-chips]"),
     error: el("[data-error]"),
@@ -947,6 +951,15 @@ export function init(ctx) {
     nodes.resultRow.textContent =
       state.analysis && row && state.rows.length > 1 ? `第 ${state.selectedRow + 1} 行 / 共 ${state.rows.length} 行` : "";
     if (nodes.copyButton) nodes.copyButton.disabled = !(evaluation && evaluation.kind === "ok");
+    // v1.7.26：按钮已更名为「记入历史」，其唯一职责就是写历史；
+    // 「记录历史」关闭时它无事可做，禁用并说明原因，而不是让用户点了没反应。
+    if (nodes.commitButton) {
+      const historyOff = !state.config.historyEnabled;
+      nodes.commitButton.disabled = historyOff;
+      nodes.commitButton.title = historyOff
+        ? "「记录历史」已关闭（齿轮 → 记录历史），开启后才能记入历史"
+        : "按当前变量表结算一次，并把这条公式与整张变量表记入历史";
+    }
   }
 
   function renderSteps() {
@@ -1070,10 +1083,18 @@ export function init(ctx) {
     nodes.historyEmpty.hidden = visible.length > 0;
     nodes.history.hidden = visible.length === 0;
     if (nodes.historyEmptyTitle) {
-      nodes.historyEmptyTitle.textContent = filtering ? "没有匹配的历史记录" : "暂无历史记录";
-      nodes.historyEmptyText.textContent = filtering
-        ? "换个关键词试试，或清空筛选条件。"
-        : "每次算出结果后会自动记录一条（含整张变量表），最多保留 50 条。";
+      // 空态要分清「还没记录」「筛不到」「根本不会记录」三种，否则文案会与实际行为打架（§16.7）
+      if (filtering) {
+        nodes.historyEmptyTitle.textContent = "没有匹配的历史记录";
+        nodes.historyEmptyText.textContent = "换个关键词试试，或清空筛选条件。";
+      } else if (!state.config.historyEnabled) {
+        nodes.historyEmptyTitle.textContent = "历史记录已关闭";
+        nodes.historyEmptyText.textContent =
+          "「记录历史」已关闭（齿轮 → 记录历史），开启后才能保存新条目；已存的条目仍可查看、导出。";
+      } else {
+        nodes.historyEmptyTitle.textContent = "暂无历史记录";
+        nodes.historyEmptyText.textContent = `点「记入历史」或按 Enter 才会存下一条（含整张变量表），最多保留 ${MAX_HISTORY} 条。`;
+      }
     }
     nodes.history.innerHTML = visible
       .map((item) => {
@@ -1203,14 +1224,14 @@ export function init(ctx) {
   }
 
   /**
-   * 触发计算：点「计算」按钮或按 `Enter`（`Ctrl/Cmd + Enter` 同义）。
+   * 触发计算：点「记入历史」按钮或按 `Enter`（`Ctrl/Cmd + Enter` 同义）。
    * 这是**唯一**写历史的入口 —— 输入、编辑单元格、切换行、改选项都只重算不写库（§16.7）。
    */
   function commit() {
     clearTimer("compute");
     const analysis = recompute();
     if (!analysis || analysis.code === ERROR_CODES.empty) {
-      setStatus("先写下公式，再点「计算」。", "warn");
+      setStatus("先写下公式，结果会即时显示；记入历史需要一条能算通的公式。", "warn");
       return;
     }
     if (!analysis.ok) {
@@ -1221,7 +1242,11 @@ export function init(ctx) {
     const evaluation = state.evaluations[state.selectedRow];
     const recorded = recordHistory();
     if (evaluation && evaluation.kind === "ok") {
-      setStatus(recorded ? `已计算 ${evaluation.text}，并记入历史` : `已计算 ${evaluation.text}`, "ok");
+      // 只有真的写进去了才说「已记入历史」；关闭时如实说明本次没记，别让用户以为存下了（§16.7）
+      if (recorded) setStatus(`已记入历史 · 结果 ${evaluation.text}`, "ok");
+      else if (!state.config.historyEnabled)
+        setStatus(`已算出 ${evaluation.text}；「记录历史」已关闭，本次未记录`, "warn");
+      else setStatus(`已算出 ${evaluation.text}`, "ok");
       return;
     }
     if (evaluation && evaluation.kind === "pending") {
@@ -1347,12 +1372,18 @@ export function init(ctx) {
     }
     clearTimer("confirm");
     resetClearHistory();
+    const removed = state.history.length;
     state.history = [];
     state.activeHistoryId = "";
     state.armed.deleteId = "";
-    persistHistory();
+    const persisted = persistHistory();
     renderHistory();
-    setStatus(`已清空历史记录（上限 ${MAX_HISTORY} 条）`, "warn");
+    // 「记录历史」关闭时清空**不落盘**（§16.7 边界：关闭即不写任何存储），必须如实说明，
+    // 否则用户以为删干净了，刷新后条目又回来。上限只是规则，不该出现在「已清空」这种结果句里。
+    setStatus(
+      persisted ? `已清空历史记录，共删除 ${removed} 条` : `已清空当前列表（${removed} 条），但「记录历史」已关闭，本次未写入存储；刷新后已存条目会回来`,
+      "warn"
+    );
   }
 
   /* ── 恢复 / 删除单条 ─────────────────────────────────── */
@@ -1405,9 +1436,13 @@ export function init(ctx) {
     }
     const [removed] = state.history.splice(index, 1);
     if (state.activeHistoryId === id) state.activeHistoryId = "";
-    persistHistory();
+    const persisted = persistHistory();
     renderHistory();
-    setStatus(`已删除历史：${removed.formula}`, "warn");
+    // 与「清空」同口径：关闭状态下的删除不落盘，得说明，别让用户以为已经删掉了（§16.7）
+    setStatus(
+      persisted ? `已删除历史：${removed.formula}` : `已从当前列表移除：${removed.formula}（「记录历史」已关闭，未写入存储，刷新后会回来）`,
+      "warn"
+    );
   }
 
   /* ── 选项 ─────────────────────────────────────────────── */
@@ -1472,7 +1507,15 @@ export function init(ctx) {
     }
     if (key === "historyEnabled") {
       // 关闭后不写任何存储（§16.7）；已写入的历史保留，由用户自行清空
-      setStatus(value ? "已开启历史记录" : "已关闭历史记录：不再写入任何存储", value ? "ok" : "warn");
+      setStatus(
+        value
+          ? "已开启「记录历史」：之后算出的结果可以存进历史"
+          : "已关闭「记录历史」：新结果不再保存（已存的条目仍保留，可导出或清空）",
+        value ? "ok" : "warn"
+      );
+      // 主按钮「记入历史」与历史空态都取决于这个开关，必须一起刷新（v1.7.26）
+      renderResult();
+      renderHistory();
     }
   }
 

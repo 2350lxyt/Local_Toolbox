@@ -294,10 +294,17 @@
   align-items: center;
   gap: var(--sp-2);
   min-width: 0;
+  /* v1.7.26：禁止换行。原实现只给 .crumbs__current 加了 nowrap，
+     「工具集」这段链接在窄屏 / 长实例名时会被压成一字一行（竖排），
+     并被 56px 定高顶栏裁切。 */
+  flex-wrap: nowrap;
+  overflow: hidden;
   font-size: var(--fs-sm);
 }
 
 .crumbs__link {
+  flex: 0 0 auto;
+  white-space: nowrap;
   color: var(--text-muted);
 }
 
@@ -306,6 +313,7 @@
 }
 
 .crumbs__sep {
+  flex: 0 0 auto;
   color: var(--text-faint);
 }
 
@@ -458,18 +466,19 @@
 /* v1.7.10：flex 均分收尾 —— 固定列数在工具数为质数时末行必然空洞；
    flex-wrap + flex-grow 让每一行（含末行）都填满容器，无需 JS（docs/DESIGN.md §4.3）。
    max-width 防止末行只剩 1 张时被拉成整行；justify-content 让不足一行的部分居中。 */
+/* v1.7.26：改为等宽网格。原 flex 方案在 5 个工具时实测两行卡片宽度为 335 / 511px，
+   同一页里出现两种卡片宽度，末行两张像"重点项目"，视觉节奏断裂。
+   网格让所有卡片同宽，末行空出的格子留白，比"把末行拉宽"更像有意的排布。 */
 .tool-grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(292px, 1fr));
   gap: var(--sp-4);
   justify-content: center;
 }
 
 .tool-card {
   display: flex;
-  flex: 1 1 292px;
   min-width: 0;
-  max-width: 520px;
 }
 
 .tool-card__link {
@@ -535,7 +544,8 @@
   font-weight: var(--fw-medium);
   letter-spacing: 0.08em;
   font-variant-numeric: tabular-nums;
-  color: var(--text-faint);
+  /* v1.7.26：编号是可读信息，改用 --text-muted（≥4.5:1） */
+  color: var(--text-muted);
 }
 
 /* 状态灯：仅在非 ready 时随徽标出现；空心圆随父级语义色着色 */
@@ -626,7 +636,8 @@
 /* 页脚只剩版本信息，右对齐 */
 .foot__meta {
   margin-left: auto;
-  color: var(--text-faint);
+  /* v1.7.26：版本号是可读信息，改用 --text-muted */
+  color: var(--text-muted);
 }
 
 /* -------------------------------------------------------------- 响应式 */

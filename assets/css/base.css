@@ -125,6 +125,14 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* v1.7.26：占位文案统一走 --text-muted —— 浏览器默认的 ::placeholder 是半透明灰，
+   在深色主题下几乎不可读（且各浏览器不一致）。占位文案承担「输入什么」的引导，
+   必须可读，故不使用最弱的 --text-faint。 */
+::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
 /* ---------- 图标基线（内联 SVG 统一由 icons.js 生成） ----------
    尺寸由 SVG 自身的 width/height 属性决定，便于按上下文单独调整；
    此处只负责不可压缩与描边基线。 */

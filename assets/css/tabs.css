@@ -117,9 +117,13 @@ body[data-mode="tabs"] .workspace {
 }
 
 .tabstrip__hint {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   padding-right: var(--sp-1);
-  color: var(--text-faint);
+  /* v1.7.26：提示文字在中等宽度（如 1000px）会被裁成半句，补省略号 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 
@@ -256,6 +260,7 @@ body[data-mode="tabs"] .workspace {
 
 .tab__close,
 .tab__menu {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -269,6 +274,15 @@ body[data-mode="tabs"] .workspace {
   visibility: hidden;
   transition: color var(--dur-fast) var(--ease-out),
     background-color var(--dur-fast) var(--ease-out);
+}
+
+/* 命中区域补足（v1.7.26）：视觉尺寸保持 20×20，热区扩到 24×24（WCAG 2.2 · 2.5.8）。
+   两个按钮间距为 --sp-1（4px），各向外扩 2px 正好相接、互不重叠。 */
+.tab__close::after,
+.tab__menu::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
 }
 
 /* 悬停 / 激活 / 焦点进入该标签时出现；菜单展开与关闭待确认时强制常显 */
@@ -307,6 +321,40 @@ body[data-mode="tabs"] .workspace {
   font-size: var(--fs-xs);
   letter-spacing: 0.02em;
   white-space: nowrap;
+}
+
+/* 首页标签钉住（v1.7.26）
+   「首页」是标签栏唯一不可关闭的常驻入口。原实现中它会随列表一起横向滚出视口
+   （实测 5 个标签 / 1000px 时左边界已在 -81px），而 tabs 模式下面包屑的「工具集」
+   是纯文本、点不动，于是「回到首页」只剩两个 ◀ ▶ 滚动按钮。
+   这里用 sticky 把它固定在滚动容器左缘：滚动时其余标签从其下方穿过。
+   背景必须不透明（--bg-inset，与 .tabstrip 同色），否则穿过的标签会透出来。 */
+.tab--home {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--bg-inset);
+}
+
+.tab--home.is-active {
+  background: var(--bg-surface);
+}
+
+/* 钉住后与右侧滚动标签之间需要一道边界，否则两枚标签会显得粘连 */
+.tab--home::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: -3px;
+  bottom: 4px;
+  width: 1px;
+  background: var(--hairline);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.tabstrip__list.is-scrolled .tab--home::after {
+  opacity: 1;
 }
 
 /* --------------------------------------------------------- 面板视口 */

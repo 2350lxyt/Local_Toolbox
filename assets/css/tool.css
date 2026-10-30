@@ -10,8 +10,7 @@
 .tool-head {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--sp-4);
+  gap: var(--sp-3);
   padding-bottom: var(--sp-3);
   border-bottom: 1px solid var(--hairline);
 }
@@ -24,13 +23,7 @@ body[data-tool] .workspace {
 
 .tool-head__main {
   min-width: 0;
-}
-
-.tool-head__eyebrow {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  margin-bottom: var(--sp-1);
+  flex: 1 1 auto;
 }
 
 /* 刻意使用 --fs-h2（20px）而非 --fs-h1（28px）：紧凑基线，见 §5.1 */
@@ -46,12 +39,17 @@ body[data-tool] .workspace {
   color: var(--text-body);
 }
 
+/* v1.7.26：工具图标从「右端独立一列」改为「标题左侧」。
+   原实现把图标推到容器最右（宽屏时距标题 900px 以上），窄栏又因 column-reverse
+   翻到标题上方独占一行；作为纯装饰却抢走了视线，两种宽度下都不成立。
+   现在它是标题的行首锚点，任何宽度下都成立，也不再需要 1080px 的翻转变体。 */
 .tool-head__icon {
   flex: 0 0 auto;
   display: grid;
   place-items: center;
   width: var(--sp-10);
   height: var(--sp-10);
+  margin-top: -4px; /* 与 20px 标题的光学中线对齐 */
   color: var(--accent);
   background: var(--accent-soft);
   border: 1px solid var(--hairline);
@@ -149,9 +147,18 @@ body[data-tool] .workspace {
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
+  /* v1.7.26：允许折行。原实现是 nowrap 的单行 flex：当右侧 .field__hint 较长
+     （如《公式计算器》的「变量名只用字母…Enter 记入历史…」）而容器变窄时，
+     左侧的标签文字会被压成一字一行（实测 510px 下「公式」竖排）。 */
+  flex-wrap: wrap;
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
   color: var(--text-strong);
+}
+
+/* 标签文字本身不参与压缩：需要换行时由右侧提示先下去 */
+.field__label > :first-child {
+  flex: 0 0 auto;
 }
 
 .field__hint {
@@ -279,7 +286,8 @@ body[data-tool] .workspace {
 }
 
 .btn:disabled {
-  color: var(--text-faint);
+  /* v1.7.26：禁用态仍需可读（虚线描边 + 内嵌底已足以表达不可用） */
+  color: var(--text-muted);
   background: var(--bg-inset);
   border-color: var(--hairline);
   border-style: dashed;
@@ -425,23 +433,14 @@ kbd {
   .panel-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-
-  .tool-head {
-    flex-direction: column-reverse;
-    gap: var(--sp-4);
-  }
 }
 
 /* 标签工作台：同一套折行规则按「栏宽」而非视口宽判定（docs/DESIGN.md §3.5 / §4.4）。
-   查询容器为 .pane__view；无匹配容器时（工具独立页）本规则整体不生效，由上面的媒体查询兜底。 */
+   查询容器为 .pane__view；无匹配容器时（工具独立页）本规则整体不生效，由上面的媒体查询兜底。
+   v1.7.26：工具头不再参与折行（图标已在标题左侧，任何宽度下都不需要翻转）。 */
 @container pane (max-width: 1080px) {
   .panel-grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .tool-head {
-    flex-direction: column-reverse;
-    gap: var(--sp-4);
   }
 }
 

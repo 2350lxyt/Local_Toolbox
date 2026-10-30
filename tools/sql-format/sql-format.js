@@ -1649,7 +1649,7 @@ const TEMPLATE = `
     <section class="panel" aria-labelledby="sf-panel-options">
       <div class="panel__head">
         <h2 class="panel__title" id="sf-panel-options">__I_FORMAT__ 格式化选项</h2>
-        <span class="panel__hint">点「格式化」后生效</span>
+        <span class="panel__hint" data-options-hint>点「格式化」后生效</span>
       </div>
       <div class="panel__body sf-options">
         <div class="field">
@@ -1937,6 +1937,7 @@ export function init(ctx) {
     commaPosition: el("#sf-comma-position"),
     blankLines: el("#sf-blank-lines"),
     rainbowBrackets: el("#sf-rainbow-brackets"),
+    optionsHint: el("[data-options-hint]"),
     actions: {
       format: el('[data-action="format"]'),
       find: el('[data-action="find"]'),
@@ -2503,15 +2504,42 @@ export function init(ctx) {
     writeSession(readForm(), state.presetId);
     if (!options || options.silent !== true) {
       setStatus(`已应用预设「${preset.name}」`, "ok");
+      // 预设只是换了一组参数，正文还没重排 —— 同样需要「未应用」提示
+      setOptionsPending(true);
     }
   }
 
   /** 标记为「自定义（未保存）」 */
   function markDirty() {
     if (state.syncing) return;
+    setOptionsPending(true);
     if (state.presetId === CUSTOM_ID) return;
     state.presetId = CUSTOM_ID;
     renderPresetOptions();
+  }
+
+  /**
+   * 选项「已改但未应用到正文」的状态（v1.7.26）。
+   * 本工具的参数改动不会立即改写编辑器内容，必须再点一次「格式化」；
+   * 原实现只把这件事写成面板右上角一行 11px 灰字，用户改完看不到任何变化，
+   * 很容易判定为「参数没生效」。这里给出两处显式线索：
+   *   ① 面板头提示文字 + 强调色；② 主按钮「格式化」上出现待办圆点。
+   */
+  let optionsPending = false;
+
+  function setOptionsPending(pending) {
+    if (optionsPending === pending) return;
+    optionsPending = pending;
+    if (nodes.optionsHint) {
+      nodes.optionsHint.textContent = pending ? "有改动 · 点「格式化」应用" : "点「格式化」后生效";
+      nodes.optionsHint.classList.toggle("is-pending", pending);
+    }
+    if (nodes.actions.format) {
+      nodes.actions.format.classList.toggle("has-pending", pending);
+      nodes.actions.format.title = pending
+        ? "按当前参数重排 SQL（选项已改动，尚未应用）"
+        : "按当前参数重排 SQL（Ctrl/Cmd + Enter）";
+    }
   }
 
   /** 两段式内联确认，避免使用 window.confirm */
@@ -2734,6 +2762,12 @@ export function init(ctx) {
     // 关键：先把焦点交还编辑区。点击「格式化」按钮后焦点在按钮上，
     // 此时设定选区并派发编辑命令不会生效，结果会被插到旧光标处而不是覆盖原文。
     input.focus({ preventScroll: true });
+
+    // v1.7.26：记录格式化前的光标所在**逻辑行**（而不是绝对偏移 —— 重排后偏移全变），
+    // 格式化后据此把视图带回原处。原实现固定 setSelectionRange(0,0) + scrollTop = 0，
+    // 长 SQL 一格式化就跳回文档开头，用户找不到刚才那一句。
+    const caretLine = value.slice(0, input.selectionStart || 0).split("\n").length - 1;
+
     // 覆盖式替换：先全选现有内容（含用户当前选区），再整体写入格式化结果
     input.setSelectionRange(0, value.length);
     const replaced = insertText(formatted);
@@ -2743,10 +2777,15 @@ export function init(ctx) {
 
     state.sameText = "";
     state.sameMatches = [];
-    input.scrollTop = 0;
-    input.setSelectionRange(0, 0);
+    // 把光标落回「同一逻辑行」的行首（行数可能因折行变化，故先夹取到有效范围），
+    // 交给浏览器原生的光标可见行为完成滚动，不手写 scrollTop。
+    const lines = formatted.split("\n");
+    const safeLine = Math.max(0, Math.min(caretLine, lines.length - 1));
+    const lineStart = lines.slice(0, safeLine).reduce((sum, line) => sum + line.length + 1, 0);
+    input.setSelectionRange(lineStart, lineStart);
     render();
     setStatus("已按当前参数格式化", "ok");
+    setOptionsPending(false);
     writeSession(readForm(), state.presetId);
   }
 

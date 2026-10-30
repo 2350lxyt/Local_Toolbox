@@ -465,8 +465,8 @@ const TEMPLATE = `
             <span>待合并内容</span>
             <span class="field__hint">每行一段，支持粘贴任意多行文本</span>
           </div>
-          <textarea class="textarea" id="tlm-input" spellcheck="false"
-                    placeholder="在此粘贴需要合并的多行文本…" aria-describedby="tlm-input-note"></textarea>
+          <textarea class="textarea" id="tlm-input" spellcheck="false" aria-label="待合并内容"
+                    aria-describedby="tlm-input-note" placeholder="在此粘贴需要合并的多行文本…"></textarea>
           <p class="field__hint" id="tlm-input-note">示例：第一行 / 第二行 / 第三行</p>
           <label class="checkbox" title="开启后，输入内容将明文保存在本机浏览器（永不上传）；关闭开关即清除已存草稿">
             <input type="checkbox" id="tlm-draft-enabled" /><span>本地草稿（本机明文保存）</span>
@@ -476,16 +476,17 @@ const TEMPLATE = `
       <div class="panel__foot">
         <button class="btn btn--ghost" type="button" data-action="clear-input">__I_TRASH__ 清空</button>
         <button class="btn btn--ghost" type="button" data-action="paste-replace" title="清空输入并粘贴剪贴板内容，随后按当前规则自动合并">__I_COPY__ 清空并粘贴</button>
-        <button class="btn btn--primary" type="button" data-action="paste-copy" title="一键完成：清空输入 → 粘贴剪贴板内容 → 按当前规则合并 → 复制结果">__I_MERGE__ 粘贴并复制结果</button>
+        <button class="btn" type="button" data-action="paste-copy" title="一键完成：清空输入 → 粘贴剪贴板内容 → 按当前规则合并 → 复制结果">__I_MERGE__ 粘贴并复制结果</button>
         <span class="panel__spacer"></span>
-        <span class="panel__hint">快捷键 <kbd>Ctrl</kbd> + <kbd>Enter</kbd> 执行合并</span>
+        <span class="panel__hint">快捷键 <kbd data-mod-key>Ctrl</kbd> + <kbd>Enter</kbd> 复制结果</span>
       </div>
     </section>
 
-    <!-- 主操作条：紧贴输入面板正下方，横跨左列整宽 -->
-    <div class="tlm-action-bar">
-      <button class="btn btn--primary" type="button" data-action="merge">__I_MERGE__ 合并</button>
-    </div>
+    <!-- v1.7.26：删除原「主操作条」（整宽强调色「合并」按钮）。
+         合并是实时的（输入/选项变化即重算并渲染），该按钮除了弹一句
+         「已按当前参数合并」之外不改变任何状态，属伪主操作；同时它在同一屏里
+         与「粘贴并复制结果」争夺唯一的主色位置。真正的产出动作是「复制结果」，
+         已位于结果面板页脚，快捷键 Ctrl/Cmd+Enter 也改为指向它。 -->
 
     <!-- 输出面板：位于输入面板正下方，与输入面板共同构成「吕」字形 -->
     <section class="panel tlm-result" aria-labelledby="tlm-panel-output">
@@ -735,7 +736,6 @@ export function init(ctx) {
       importJson: el('[data-action="import-presets"]'),
       copy: el('[data-action="copy"]'),
       download: el('[data-action="download"]'),
-      merge: el('[data-action="merge"]'),
       clear: el('[data-action="clear-input"]'),
     pasteReplace: el('[data-action="paste-replace"]'),
     pasteCopy: el('[data-action="paste-copy"]'),
@@ -1228,24 +1228,6 @@ export function init(ctx) {
     container.scrollTo({ top, behavior });
   }
 
-  /**
-   * 手动触发合并（主操作条按钮与 Ctrl/Cmd+Enter 共用）。
-   * 与防抖实时预览的区别：立即结算，并滚动到输出区底部，便于紧接着复制。
-   */
-  function triggerMerge() {
-    clearTimer("debounce");
-    refreshNow();
-
-    if (state.result === "") {
-      setStatus("暂无可合并的内容。", "warn");
-      return;
-    }
-    setStatus("已按当前参数合并", "ok");
-
-    // 等一帧，确保输出面板尺寸已按新结果更新后再测量位置
-    window.requestAnimationFrame(scrollToOutputBottom);
-  }
-
   function onOptionChange() {
     markDirty();
     syncEscapeGroup();
@@ -1266,6 +1248,10 @@ export function init(ctx) {
       setStatus("复制失败，请手动选择结果文本复制。", "danger");
       return false;
     }
+    setStatus("合并结果已复制到剪贴板", "ok");
+    // v1.7.26：原「合并」按钮的「滚到结果区」职责转到这里 —— 用快捷键复制时，
+    // 结果往往在视口之外，滚一下才好确认复制的是什么；已可见时不滚动。
+    window.requestAnimationFrame(scrollToOutputBottom);
     clearTimer("copy");
     nodes.actions.copy.innerHTML = `${icons.icon("check", 15)} 已复制`;
     nodes.actions.copy.classList.add("is-ok");
@@ -1361,7 +1347,6 @@ export function init(ctx) {
     bind(node, "change", onOptionChange);
   });
 
-  bind(nodes.actions.merge, "click", () => triggerMerge());
   bind(nodes.actions.clear, "click", clearInput);
   bind(nodes.actions.pasteReplace, "click", () => pasteReplace(false));
   bind(nodes.actions.pasteCopy, "click", () => pasteReplace(true));
@@ -1398,7 +1383,8 @@ export function init(ctx) {
     if (inTabsWorkspace && !root.contains(event.target)) return;
     if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
       event.preventDefault();
-      triggerMerge();
+      // v1.7.26：合并已是实时行为，快捷键改为指向工具真正的产出动作「复制结果」
+      copyResult();
       return;
     }
     if (event.key === "Escape") {
@@ -1436,6 +1422,13 @@ export function init(ctx) {
   syncEscapeGroup();
   syncEffects();
   refreshNow();
+
+  /* 快捷键文案跟随平台（v1.7.26）：代码同时接受 Ctrl 与 metaKey，文案不能只写 Ctrl */
+  if (/mac|iphone|ipad/i.test(navigator.userAgent)) {
+    host.querySelectorAll("[data-mod-key]").forEach((node) => {
+      node.textContent = "⌘";
+    });
+  }
 
   console.info(
     `[toolbox] 已挂载工具「${tool.name}」：内置预设 ${BUILTIN_PRESETS.length} 项，自定义预设 ${state.customPresets.length} 项`

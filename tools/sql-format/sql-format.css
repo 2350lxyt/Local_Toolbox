@@ -82,6 +82,24 @@
   font-size: var(--fs-sm);
 }
 
+/* 选项已改、尚未应用（v1.7.26）：主按钮右上角出现待办圆点。
+   参数改动本身不会改写正文，必须再点一次「格式化」——
+   没有这个线索时，用户会以为参数没生效（详见 sql-format.js setOptionsPending）。 */
+.sf-toolbar .btn--primary.has-pending::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--accent-contrast);
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+
+/* 选项面板头部的「未应用」提示 */
+.panel__hint.is-pending {
+  color: var(--warn);
+}
+
 /* 删除按钮的两段式确认态 */
 .sf-toolbar .btn.is-armed {
   color: var(--danger);
@@ -402,7 +420,8 @@
 }
 
 .sf-input::placeholder {
-  color: var(--text-faint);
+  /* v1.7.26：占位文案是引导信息，用 --text-muted（≥4.5:1） */
+  color: var(--text-muted);
 }
 
 /* 选区色带（v1.7.15）：透明 textarea 的字形由高亮层绘制，因此选区**只能用半透明色带**表示。
