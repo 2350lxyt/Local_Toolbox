@@ -317,6 +317,14 @@
   white-space: nowrap;
 }
 
+/* v1.7.33：summary 是整句（「相似度 87.5%（口径：…）· 代码高亮：SQL」/ 空态提示），
+   原先紧跟「相同 0」排在同行，读成「相同 0 两侧均为空」。
+   有内容时独占一行；`:not(:empty)` 保证未填充时不额外占一行。 */
+.td-meta__item[data-summary]:not(:empty) {
+  flex: 1 0 100%;
+  white-space: normal;
+}
+
 .td-meta__item b {
   font-family: var(--font-mono);
   font-size: var(--fs-sm);

@@ -339,7 +339,8 @@
   overflow: hidden;
   padding: var(--sp-4) var(--sp-3) var(--sp-4) var(--sp-4);
   text-align: right;
-  color: var(--text-faint);
+  /* v1.7.33：行号是 13px 正文级文字、也是定位依据，不是装饰；原为 --text-faint（该底上仅 3.33:1）。 */
+  color: var(--text-muted);
   background: var(--bg-inset);
   border-right: 1px solid var(--hairline);
   font-variant-numeric: tabular-nums;

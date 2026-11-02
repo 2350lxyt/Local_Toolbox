@@ -324,7 +324,9 @@
 
 .dc-day.is-outside {
   background: var(--bg-sunken);
-  color: var(--text-faint);
+  /* v1.7.33：相邻月的日期是 13px 数字、会被读（用来判断「本月 1 号是周几」），
+     不是装饰。原 --text-faint 在 --bg-sunken 上仅 3.04:1，是本次审计里最差的一处。 */
+  color: var(--text-muted);
 }
 
 .dc-day.is-outside .dc-tag {

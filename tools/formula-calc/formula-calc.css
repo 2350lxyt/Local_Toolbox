@@ -507,7 +507,9 @@
 .fc-history__note {
   margin-top: var(--sp-2);
   font-size: var(--fs-xs);
-  color: var(--text-faint);
+  /* v1.7.33：这句是说明文本（「历史保存在本机浏览器，最多 50 条，不跨设备同步」），
+     属 §3.2 里「承载正文语义」的情形，不能用只保证 3:1 的 --text-faint。 */
+  color: var(--text-muted);
 }
 
 /* ── 导入 / 导出 ────────────────────────────────────────── */
