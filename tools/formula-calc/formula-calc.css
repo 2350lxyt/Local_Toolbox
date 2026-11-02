@@ -142,9 +142,28 @@
   margin-top: var(--sp-3);
   height: var(--fc-table-viewport);
   overflow: auto;
+  /* 选区外框是它的绝对定位子元素，需要它当定位父级（v1.7.37） */
+  position: relative;
   /* v1.7.5：加发丝描边 + 圆角 —— 固定视口留下的空白因此有了边界，不再像一块「空洞」 */
   border: 1px solid var(--hairline);
   border-radius: var(--r-sm);
+}
+
+/* 选区外框（v1.7.37）：**一圈** 1.5px 强调线，坐标由 JS 写进 style。
+   它只负责「边界」这一件事 —— 选区的底色仍由 `.fc-cell.is-range` 承担。
+   之所以要用真元素：给边缘格逐格画边会在内部格上留下网格状描边，
+   而 Excel 的选区只有外侧一圈。`pointer-events:none` 保证它不吃指针事件。 */
+.fc-range-frame {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  border: 1.5px solid var(--accent);
+  border-radius: 1px;
+}
+
+/* 拖选期间禁止选中文字（指针已被选区接管，若不禁止，从格子往外拖会顺带选中页面文字） */
+.fc-table-scroll.is-selecting {
+  user-select: none;
 }
 
 /* 无变量时的引导块占同样的高度，避免「有变量 ↔ 无变量」切换时也把历史顶走 */
@@ -164,27 +183,49 @@
   font-size: var(--fs-sm);
 }
 
+/* v1.7.35（§16.14）Excel 化：单元格**自身不再有上下内边距**，留白改由格内输入框承担；
+   网格线只画「右缘 + 下缘」两条 —— `border-collapse: separate` 下相邻边会叠成 2px 双线。 */
 .fc-table th,
 .fc-table td {
-  padding: var(--sp-1) var(--sp-2);
+  padding: 0 var(--sp-2);
+  height: 30px;
   text-align: left;
   white-space: nowrap;
+  border-right: 1px solid var(--hairline);
   border-bottom: 1px solid var(--hairline);
 }
 
 .fc-table thead th {
   position: sticky;
   top: 0;
-  z-index: 1;
+  /* 必须高于选区外框（2）：外框会随内容滚到表头底下，表头得压住它，
+     否则橙线会横穿表头（v1.7.37） */
+  z-index: 3;
   background: var(--bg-inset);
   font-size: var(--fs-2xs);
   font-weight: var(--fw-medium);
   color: var(--text-muted);
 }
 
+/* 点列头选中整列（v1.7.35）：表头即列选择器，与 Excel 的列标一致 */
+.fc-table thead th[data-column] {
+  cursor: pointer;
+}
+
+.fc-table thead th[data-column]:hover {
+  color: var(--text-body);
+  background: var(--bg-hover);
+}
+
+/* v1.7.35：行号列做成「标尺」—— 右对齐、等宽、内嵌底 + 右侧竖线分隔，
+   与 Excel 的行号栏同一种读法（扫一眼就能对到第几行）。 */
 .fc-table__cell--index {
   width: 1%;
-  color: var(--text-faint);
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-inset);
+  color: var(--text-muted);
 }
 
 /* 「结果」列吸收剩余宽度并右对齐 ⇒ 结果永远贴在表格最右（v1.7.4）。
@@ -202,9 +243,11 @@
   transition: background var(--dur-fast) var(--ease-out);
 }
 
-/* 斑马纹（v1.7.4）：偶数行铺淡底，多行数据时更好横向扫读；hover 与选中都在它之后，能盖过它 */
+/* 斑马纹：保留，但降到 3%（v1.7.35）。取色方式参考 Excel 的条带行 ——
+   用**正文墨色的 3%** 混进当前底色，而不是另找一个灰：
+   浅色主题得到极淡的暖灰，深色主题自动变成「比底稍亮」，明暗两套都不用各写一个值。 */
 .fc-table tbody tr:nth-child(even) {
-  background: var(--bg-inset);
+  background: color-mix(in oklab, var(--text-strong) 3%, var(--bg-base));
 }
 
 .fc-table tbody tr:hover {
@@ -269,17 +312,53 @@
 .fc-cell {
   width: 1%;
   min-width: var(--fc-col-min, 92px);
+  cursor: cell;
 }
 
+/* v1.7.35：输入框**填满整格**并去掉自己的边框 / 圆角 / 内边距 ——
+   这是「像 Excel」的关键一步：一个格子只有一层边界（td 的网格线），
+   而不是「表格线 + 输入框线」两层线打架（此前正是这股「表单感」的来源）。 */
 .fc-cell .input {
-  width: calc(var(--fc-col-min, 92px) - 2 * var(--sp-2));
+  width: 100%;
   min-width: 0;
-  height: 28px;
-  /* **透明底**：输入框若自带底色，会把「斑马纹 / 选中整行 / hover / 定位高亮」的行底色整格盖住
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  /* **透明底**：输入框若自带底色，会把「斑马纹 / 选中整行 / 选区 / 定位高亮」的行底色整格盖住
      —— v1.7.3「看上去只有第一格有强调」就是被它挡掉的（v1.7.4 修，见 §16.4） */
   background: transparent;
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
+}
+
+/* 活动格由 td 画 2px 框（Excel 那种整格框），输入框自身不再画焦点环，
+   否则同一格里会出现「内圈描边 + 外圈框」两层线。 */
+.fc-cell .input:focus {
+  border-color: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
+/* 选区（v1.7.35，v1.7.37 换色相）：矩形内铺**中性灰**底；活动格（选区锚点）再套 2px 强调框。
+   两类状态都不影响 `state.selectedRow`，也不被它影响（§16.14）。
+
+   **必须与「选中行」的橙不同色相**：v1.7.35 用同色相两档浓度（16% vs 9%），
+   实测在低饱和深色底上根本读不出差别 —— 一片橙里既看不出「要复制什么」，
+   也看不出「右栏在讲哪一行」。v1.7.37 改为灰（选区）vs 橙（选中行）。
+
+   特异性说明：选中行底色规则是 `.fc-table tbody tr.is-selected td`（0,2,3），
+   单写 `.fc-cell.is-range`（0,2,0）会被它压掉 —— 于是**选中行里的选区格显示的是行底色**，
+   选区在那几格「消失」。这里必须写成 (0,3,3) 才压得住。 */
+.fc-table tbody tr td.fc-cell.is-range {
+  background: var(--fc-range-tint);
+}
+
+.fc-cell.is-active,
+.fc-cell:focus-within {
+  position: relative;
+  z-index: 1;
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .fc-cell.is-invalid .input {
@@ -596,6 +675,17 @@
   /* 行状态底色（选中 / 定位高亮）：**低比例强调混色**（≈9%）。
      原来是 --accent-soft（≈14%），暗色主题下整行会「发烫」——强调改由强调条/行号/结果列承担（§16.13 v1.7.5） */
   --fc-select-tint: color-mix(in srgb, var(--accent) 9%, transparent);
+  /* 选区底色（v1.7.37）：**中性灰**，与选中行的橙**换色相**而不是加浓度。
+     v1.7.35 用「accent 16% vs accent 9%」同色相两档，实测两者叠在一起就是一片橙，
+     正好违背 §16.14「要能分清楚」的初衷 —— 浓度差在低饱和深色底上几乎读不出来，
+     色相差才是可靠信号。取正文墨色的 11%，暗色主题另抬到 15%（见下）。 */
+  --fc-range-tint: color-mix(in oklab, var(--text-strong) 11%, var(--bg-base));
+}
+
+/* 暗色主题下同样的 11% 会被底色的低明度吃掉（8% 实测几乎看不见），单独抬到 15%。
+   浅色主题反过来：15% 的黑在白底上是明显的一块灰，比 Excel 的选区重 —— 所以按主题分档。 */
+:root[data-theme="dark"] .fc-layout {
+  --fc-range-tint: color-mix(in oklab, var(--text-strong) 15%, var(--bg-base));
 }
 
 /* ── 公式输入框：透明文本 + 彩色叠加层（§16.13）─────────────

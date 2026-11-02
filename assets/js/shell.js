@@ -20,6 +20,7 @@ import * as dom from "./utils/dom.js";
 import * as clipboard from "./utils/clipboard.js";
 import * as text from "./utils/text.js";
 import * as draft from "./utils/draft.js";
+import * as menu from "./utils/menu.js";
 import {
   THEME_LABEL,
   THEME_ICON,
@@ -447,7 +448,7 @@ async function loadToolModule(tool, host, instance) {
       name: tool.name,
       renamed: false,
     },
-    utils: { dom, clipboard, text, draft },
+    utils: { dom, clipboard, text, draft, menu },
     icons: { icon },
     toSiteUrl,
   });

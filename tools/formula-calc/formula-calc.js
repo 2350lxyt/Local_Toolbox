@@ -373,6 +373,10 @@ const TEMPLATE = `
           <thead data-table-head></thead>
           <tbody data-table-body></tbody>
         </table>
+        <!-- 选区外框（v1.7.37）：一个绝对定位的空壳，坐标由 JS 按选区四角算。
+             用真元素而不是逐格画边 —— 逐格画会在内部格上留下网格状描边，
+             而 Excel 的选区只有**一圈**外框。aria-hidden + pointer-events:none，纯装饰。 -->
+        <div class="fc-range-frame" data-range-frame hidden aria-hidden="true"></div>
       </div>
       <div class="empty" data-table-empty>
         <span class="empty__icon" aria-hidden="true">__I_EMPTY_TABLE__</span>
@@ -466,7 +470,7 @@ export function init(ctx) {
   const host = root.querySelector("[data-tool-body]") || root.querySelector("#tool-body");
   if (!host) return () => {};
 
-  const { dom, clipboard } = utils;
+  const { dom, clipboard, menu } = utils;
   const escapeHtml = dom.escapeHtml;
 
   // 同一工具可开多个实例：面板内 DOM id 必须按实例唯一，否则 <label for> / aria-* 会串到别的实例（§9.3 第 9 条）
@@ -500,6 +504,7 @@ export function init(ctx) {
     optionsToggle: el('[data-action="toggle-options"]'),
     options: el("[data-options]"),
     tableScroll: el("[data-table-scroll]"),
+    rangeFrame: el("[data-range-frame]"),
     tableHead: el("[data-table-head]"),
     tableBody: el("[data-table-body]"),
     tableEmpty: el("[data-table-empty]"),
@@ -837,6 +842,7 @@ export function init(ctx) {
     if (!hasVariables) {
       nodes.tableHead.innerHTML = "";
       nodes.tableBody.innerHTML = "";
+      if (nodes.rangeFrame) nodes.rangeFrame.hidden = true;
       return;
     }
 
@@ -862,8 +868,8 @@ export function init(ctx) {
             const invalid =
               evaluation && evaluation.kind === "invalid" && evaluation.invalid.some((item) => item.name === variable.name);
             return (
-              `<td class="fc-cell ${hueClass(column)}${invalid ? " is-invalid" : ""}" data-column="${column}">` +
-              `<input class="input" type="text" spellcheck="false" autocomplete="off" ` +
+              `<td class="fc-cell ${hueClass(column)}${invalid ? " is-invalid" : ""}" data-column="${column}" data-grid="${index}:${column}">` +
+              `<input class="input" type="text" size="1" spellcheck="false" autocomplete="off" ` +
               `data-cell="${index}:${column}" value="${escapeHtml(raw)}" ` +
               `aria-label="${escapeHtml(variable.name)} 第 ${index + 1} 行取值" /></td>`
             );
@@ -881,6 +887,10 @@ export function init(ctx) {
         );
       })
       .join("");
+
+    // 整表重建后按索引重新套选区（选区是纯视图状态，不随 DOM 重建丢失；§16.14）
+    clampSelection();
+    paintSelection();
   }
 
   /** 只刷新某一行的结果单元格与非法态（避免重建整表导致输入框失焦，§16.9） */
@@ -902,6 +912,343 @@ export function init(ctx) {
       holder.classList.toggle("is-invalid", Boolean(invalid));
     });
   }
+
+  /* ── 单元格选区与复制（v1.7.35，§16.14）────────────────────────────
+     语义（硬性）：选区**只服务于复制**。它不读写 `state.selectedRow`，
+     切换选中行也不会移动选区 —— 两套状态各自独立更新，互不触发。
+     原因是选中行决定右栏「分步过程 / 结果行」显示哪一行，若被拖选带着乱跳，
+     用户核对过程时会失去参照。 */
+
+  /** 归一化矩形（r0<=r1, c0<=c1）；null 表示无选区 */
+  let selection = null;
+  /** Shift 扩展与拖选的锚点（起始那一格），与选区左上角不是同一回事 */
+  let anchor = null;
+  /** 拖选判定用：按下位置与阈值 */
+  let dragStart = null;
+  let dragging = false;
+  const DRAG_THRESHOLD = 4;
+
+  const modKey = /mac|iphone|ipad/i.test(navigator.platform || "") ? "⌘" : "Ctrl";
+
+  function normalizeRange(a, b) {
+    return {
+      r0: Math.min(a.row, b.row),
+      r1: Math.max(a.row, b.row),
+      c0: Math.min(a.col, b.col),
+      c1: Math.max(a.col, b.col),
+    };
+  }
+
+  /** 变量 / 行数变化后把选区夹回合法范围（删变量、删行都会让它越界） */
+  function clampSelection() {
+    if (!selection) return;
+    const maxRow = state.rows.length - 1;
+    const maxCol = state.variables.length - 1;
+    if (maxRow < 0 || maxCol < 0) {
+      selection = null;
+      anchor = null;
+      return;
+    }
+    selection = {
+      r0: Math.min(selection.r0, maxRow),
+      r1: Math.min(selection.r1, maxRow),
+      c0: Math.min(selection.c0, maxCol),
+      c1: Math.min(selection.c1, maxCol),
+    };
+    if (anchor) {
+      anchor = { row: Math.min(anchor.row, maxRow), col: Math.min(anchor.col, maxCol) };
+    }
+  }
+
+  /** 选区内的活动格：锚点仍在矩形内就用锚点，否则退回左上角（与 Excel 一致） */
+  function activeCell() {
+    if (!selection) return null;
+    const inside =
+      anchor &&
+      anchor.row >= selection.r0 && anchor.row <= selection.r1 &&
+      anchor.col >= selection.c0 && anchor.col <= selection.c1;
+    return inside ? anchor : { row: selection.r0, col: selection.c0 };
+  }
+
+  /**
+   * 选区外框（v1.7.37）：把选区矩形投影成一个绝对定位的空壳。
+   * 为什么不给边缘格画边：边缘格各自画边会在内部格上留下网格状描边，
+   * 而 Excel 的选区只有**一圈**外框；逐格拼接又会在 1px 网格线上出现半像素缝。
+   * 坐标取「内容坐标」（rect 差 + 容器 scrollLeft/Top）—— 外框是滚动容器的绝对定位子元素，
+   * 因此跟着内容一起滚，不需要在 scroll 里重算。
+   */
+  function paintRangeFrame() {
+    const frame = nodes.rangeFrame;
+    const scroller = nodes.tableScroll;
+    if (!frame || !scroller) return;
+    if (!selection || scroller.hidden) {
+      frame.hidden = true;
+      return;
+    }
+    const first = nodes.tableBody.querySelector(`td[data-grid="${selection.r0}:${selection.c0}"]`);
+    const last = nodes.tableBody.querySelector(`td[data-grid="${selection.r1}:${selection.c1}"]`);
+    if (!first || !last) {
+      frame.hidden = true;
+      return;
+    }
+    const a = first.getBoundingClientRect();
+    const b = last.getBoundingClientRect();
+    if (!a.width || !b.width) {
+      frame.hidden = true;
+      return;
+    }
+    const host = scroller.getBoundingClientRect();
+    frame.hidden = false;
+    frame.style.left = `${a.left - host.left + scroller.scrollLeft}px`;
+    frame.style.top = `${a.top - host.top + scroller.scrollTop}px`;
+    frame.style.width = `${b.right - a.left}px`;
+    frame.style.height = `${b.bottom - a.top}px`;
+  }
+
+  function paintSelection() {
+    const active = activeCell();
+    nodes.tableBody.querySelectorAll("td[data-grid]").forEach((td) => {
+      if (!selection) {
+        td.classList.remove("is-range", "is-active");
+        return;
+      }
+      const [row, col] = td.dataset.grid.split(":").map(Number);
+      const inRange = row >= selection.r0 && row <= selection.r1 && col >= selection.c0 && col <= selection.c1;
+      td.classList.toggle("is-range", inRange);
+      td.classList.toggle("is-active", Boolean(inRange && active && row === active.row && col === active.col));
+    });
+    paintRangeFrame();
+  }
+
+  /* 列宽会随面板宽度变化（分栏拖动 / 侧栏收起 / 窗口缩放）—— 外框得跟着重算，
+     否则选区一跨列就会停在旧位置上。观察整张表比监听 window.resize 更准（只认真的变宽变窄）。 */
+  const rangeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(() => paintRangeFrame()) : null;
+  if (rangeObserver) {
+    const table = nodes.tableHead.closest("table");
+    if (table) rangeObserver.observe(table);
+  }
+
+  function setSelection(range, nextAnchor) {
+    selection = range;
+    if (nextAnchor) anchor = nextAnchor;
+    paintSelection();
+  }
+
+  function clearSelection() {
+    if (!selection) return;
+    selection = null;
+    anchor = null;
+    paintSelection();
+  }
+
+  /** 指针位置 → 网格坐标（只认数据格；行号 / 结果列不参与选区） */
+  function cellFromEvent(event) {
+    const direct = event.target instanceof Element ? event.target.closest("td[data-grid]") : null;
+    // 指针捕获后 `event.target` 会变成捕获元素（tbody），拿不到真实格子 —— 按坐标补一次
+    const under = direct ? null : document.elementFromPoint(event.clientX, event.clientY);
+    const td = direct || (under instanceof Element ? under.closest("td[data-grid]") : null);
+    if (!td) return null;
+    const [row, col] = td.dataset.grid.split(":").map(Number);
+    if (!Number.isInteger(row) || !Number.isInteger(col)) return null;
+    return { row, col };
+  }
+
+  function tsvSafe(value) {
+    // 单元格里若含制表符 / 换行，粘到表格软件会错位 —— 一律压成空格（§16.14）
+    return String(value === undefined || value === null ? "" : value).replace(/[\t\r\n]+/g, " ");
+  }
+
+  function buildTsv(range, withHeader) {
+    const lines = [];
+    if (withHeader) {
+      const names = [];
+      for (let col = range.c0; col <= range.c1; col += 1) {
+        names.push(tsvSafe(state.variables[col] ? state.variables[col].name : ""));
+      }
+      lines.push(names.join("\t"));
+    }
+    for (let row = range.r0; row <= range.r1; row += 1) {
+      const record = state.rows[row];
+      const values = [];
+      for (let col = range.c0; col <= range.c1; col += 1) {
+        const variable = state.variables[col];
+        values.push(tsvSafe(record && variable ? record.cells[variable.name] : ""));
+      }
+      lines.push(values.join("\t"));
+    }
+    return lines.join("\n");
+  }
+
+  function copyRange(range, withHeader) {
+    if (!range) return;
+    const rowCount = range.r1 - range.r0 + 1;
+    const colCount = range.c1 - range.c0 + 1;
+    clipboard
+      .copyText(buildTsv(range, withHeader))
+      .then(() => {
+        const size = rowCount === 1 && colCount === 1 ? "1 个单元格" : `${rowCount}×${colCount} 个单元格`;
+        setStatus(`已复制 ${size}${withHeader ? "（含表头）" : ""}`, "ok");
+      })
+      .catch(() => setStatus("复制失败，请用鼠标选中文字复制。", "warn"));
+  }
+
+  function fullRange() {
+    if (!state.rows.length || !state.variables.length) return null;
+    return { r0: 0, r1: state.rows.length - 1, c0: 0, c1: state.variables.length - 1 };
+  }
+
+  function openTableMenu(x, y) {
+    const hasSelection = Boolean(selection);
+    const all = fullRange();
+    menu.open({
+      x,
+      y,
+      label: "变量表",
+      items: [
+        {
+          label: "复制选区",
+          shortcut: `${modKey}+C`,
+          disabled: !hasSelection,
+          onSelect: () => copyRange(selection, false),
+        },
+        {
+          label: "复制选区（含表头）",
+          disabled: !hasSelection,
+          onSelect: () => copyRange(selection, true),
+        },
+        { separator: true },
+        { label: "复制整表", disabled: !all, onSelect: () => copyRange(all, false) },
+        { label: "复制整表（含表头）", disabled: !all, onSelect: () => copyRange(all, true) },
+      ],
+    });
+  }
+
+  function inSelection(cell) {
+    return (
+      selection &&
+      cell.row >= selection.r0 && cell.row <= selection.r1 &&
+      cell.col >= selection.c0 && cell.col <= selection.c1
+    );
+  }
+
+  /* 指针：按下选格、拖过阈值才算拖选。
+     这里必须 `preventDefault()` —— 否则光标会落进输入框，鼠标一拖就是**选中文字**而不是选格。
+     代价是单击不再自动获得焦点，因此松手时手动 `focus()` 补回「点一下就编辑」，
+     并且双击一律全选（补偿失去的原生词选择）。 */
+  bind(nodes.tableBody, "pointerdown", (event) => {
+    if (event.button !== 0) return; // 右键交给 contextmenu
+    if (event.target.closest("[data-pick]")) return; // 行号按钮：查看计算过程，不参与选区
+    const cell = cellFromEvent(event);
+    if (!cell) return;
+    // 触屏 / 笔：保留原生行为（点即编辑），拖选不做 —— 避免 `touch-action` 与表格滚动打架
+    if (event.pointerType && event.pointerType !== "mouse") return;
+
+    event.preventDefault();
+    dragStart = { x: event.clientX, y: event.clientY, row: cell.row, col: cell.col };
+    dragging = false;
+
+    if (event.shiftKey && anchor) {
+      setSelection(normalizeRange(anchor, cell), anchor);
+    } else {
+      setSelection(normalizeRange(cell, cell), cell);
+    }
+
+    try {
+      nodes.tableBody.setPointerCapture(event.pointerId);
+    } catch (error) {
+      /* 部分浏览器不支持捕获，忽略 */
+    }
+  });
+
+  bind(nodes.tableBody, "pointermove", (event) => {
+    if (!dragStart) return;
+    if (!dragging) {
+      const dx = event.clientX - dragStart.x;
+      const dy = event.clientY - dragStart.y;
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      dragging = true;
+      nodes.tableScroll.classList.add("is-selecting");
+    }
+    const cell = cellFromEvent(event);
+    if (!cell) return;
+    setSelection(normalizeRange(dragStart, cell), { row: dragStart.row, col: dragStart.col });
+  });
+
+  bind(nodes.tableBody, "pointerup", (event) => {
+    if (!dragStart) return;
+    const start = dragStart;
+    const wasDragging = dragging;
+    dragStart = null;
+    dragging = false;
+    nodes.tableScroll.classList.remove("is-selecting");
+    try {
+      nodes.tableBody.releasePointerCapture(event.pointerId);
+    } catch (error) {
+      /* 未捕获则忽略 */
+    }
+    /* 焦点必须落回表格：`pointerdown` 里 preventDefault 过，浏览器不会给输入框焦点。
+       若不管，框选完紧接着按 Ctrl+C 会因为焦点还在 body 上而收不到按键 —— 而这正是
+       复制功能最常见的用法（Excel 里框选后 Ctrl+C 直接可用）。 */
+    const input = nodes.tableBody.querySelector(`[data-cell="${start.row}:${start.col}"]`);
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    if (!wasDragging) {
+      const end = input.value.length;
+      input.setSelectionRange(end, end);
+    }
+  });
+
+  bind(nodes.tableBody, "pointercancel", () => {
+    dragStart = null;
+    dragging = false;
+    nodes.tableScroll.classList.remove("is-selecting");
+  });
+
+  // 双击 = 选中该格全部文字（补偿被接管的原生词选择）
+  bind(nodes.tableBody, "dblclick", (event) => {
+    const input = event.target.closest("[data-cell]");
+    if (!input) return;
+    event.preventDefault();
+    input.focus();
+    input.select();
+  });
+
+  // 点列头选中整列（Excel 习惯）；不改变选中行
+  bind(nodes.tableHead, "click", (event) => {
+    const th = event.target.closest("th[data-column]");
+    if (!th) return;
+    const col = Number(th.dataset.column);
+    if (!Number.isInteger(col) || !state.rows.length) return;
+    setSelection({ r0: 0, r1: state.rows.length - 1, c0: col, c1: col }, { row: 0, col });
+    // 同上：把焦点放进表格，否则紧接着的 Ctrl+C 收不到按键
+    const first = nodes.tableBody.querySelector(`[data-cell="0:${col}"]`);
+    if (first) first.focus({ preventScroll: true });
+  });
+
+  // 右键：先按 Excel 习惯把光标下的格子纳入选区，再弹菜单
+  bind(nodes.tableScroll, "contextmenu", (event) => {
+    const cell = cellFromEvent(event);
+    if (!cell) return;
+    event.preventDefault();
+    if (!inSelection(cell)) {
+      setSelection(normalizeRange(cell, cell), cell);
+    }
+    openTableMenu(event.clientX, event.clientY);
+  });
+
+  // Ctrl/Cmd + C：有选区就整块复制（单元格内的文字选区优先交给原生）
+  bind(host, "keydown", (event) => {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+    if ((event.key || "").toLowerCase() !== "c") return;
+    if (!selection) return;
+    const input = event.target instanceof Element ? event.target.closest("[data-cell]") : null;
+    if (input && input.selectionStart !== input.selectionEnd) return;
+    event.preventDefault();
+    copyRange(selection, false);
+  });
+
+  // 选区是纯视图状态：Esc 清除（优先级排在既有 Escape 链的末尾，§16.9）
+
 
   /**
    * 点 chip 定位到该变量所在列（§16.4 v1.7.4）：目标列短暂高亮 + 在变量表视口内**横向滚动居中**。
@@ -1709,6 +2056,8 @@ export function init(ctx) {
     }
     const row = event.target.closest("tr[data-row]");
     if (!row || event.target.closest("input")) return;
+    // 数据格由选区逻辑接管（§16.14）：点格子只移动选区，**不改选中行**
+    if (event.target.closest("td[data-grid]")) return;
     selectRow(Number(row.dataset.row));
   });
 
@@ -1806,6 +2155,7 @@ export function init(ctx) {
       } else if (state.armed.clearFormula) resetClearFormula();
       else if (state.armed.clearHistory) resetClearHistory();
       else if (!nodes.error.hidden) clearError();
+      else if (selection) clearSelection();
     }
   });
 
@@ -1831,6 +2181,10 @@ export function init(ctx) {
 
   return () => {
     Object.keys(timers).forEach(clearTimer);
+    if (rangeObserver) rangeObserver.disconnect();
+    // 菜单挂在 body 上，不由 dom.clear(host) 带走 —— 面板卸载时必须手动关掉，
+    // 否则关掉标签后菜单会孤零零留在屏幕上
+    menu.close();
     if (detachOutsideClick) {
       detachOutsideClick();
       detachOutsideClick = null;

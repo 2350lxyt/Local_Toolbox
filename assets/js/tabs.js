@@ -1473,6 +1473,9 @@ export function createTabsWorkspace(options = {}) {
       bind(pane.list, "contextmenu", (event) => {
         const tabEl = event.target instanceof Element ? event.target.closest(".tab") : null;
         if (!tabEl) return;
+        // 首页标签没有菜单可开（`openMenu` 遇到 home 直接返回）：此时**不拦**原生菜单 ——
+        // 否则右键下去「什么都没发生」，比一个原生菜单更让人困惑（§6）
+        if (tabEl.dataset.instance === HOME_ID) return;
         event.preventDefault();
         openMenu(tabEl.dataset.instance, tabEl.querySelector(".tab__menu"));
       });
