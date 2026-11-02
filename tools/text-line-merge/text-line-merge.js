@@ -33,6 +33,8 @@ const MAX_PRESETS = 200;
 const MAX_NAME_LENGTH = 40;
 const DEBOUNCE_MS = 180;
 const FEEDBACK_MS = 2000;
+/** 删除预设的待确认态自动收起时限（v1.7.36 起由菜单承载，与《SQL 格式化》一致） */
+const REMOVE_CONFIRM_MS = 3000;
 
 /** 预设下拉中代表「已手动改动、尚未保存」的哨兵值 */
 const CUSTOM_ID = "__custom__";
@@ -398,11 +400,9 @@ const TEMPLATE = `
   </div>
   <div class="tlm-toolbar__actions">
     <button class="btn" type="button" data-action="save-preset">__I_SAVE__ 另存为</button>
-    <button class="btn" type="button" data-action="delete-preset">__I_TRASH__ 删除</button>
-    <button class="icon-btn" type="button" data-action="reset-config" title="恢复默认预设" aria-label="恢复默认预设">__I_REFRESH__</button>
-    <button class="icon-btn" type="button" data-action="copy-json" title="复制预设 JSON" aria-label="复制预设 JSON">__I_JSON__</button>
-    <button class="btn" type="button" data-action="export-presets">__I_DOWNLOAD__ 导出</button>
-    <button class="btn" type="button" data-action="import-presets">__I_UPLOAD__ 导入</button>
+    <!-- v1.7.36：与《SQL 格式化》统一 —— 删除 / 恢复默认 / 复制 JSON / 导出 / 导入 收进「更多」 -->
+    <button class="icon-btn" type="button" data-action="more" title="更多预设操作"
+            aria-label="更多预设操作" aria-haspopup="menu" aria-expanded="false">__I_MORE__</button>
   </div>
 </div>
 
@@ -625,6 +625,7 @@ const ICON_TOKENS = {
   __I_OUTPUT__: ["check", 16],
   __I_MERGE__: ["merge", 15],
   __I_COPY__: ["copy", 15],
+  __I_MORE__: ["more", 15],
   __I_EMPTY_OUTPUT__: ["merge", 20],
 };
 
@@ -679,7 +680,7 @@ export function init(ctx) {
   const host = root.querySelector("[data-tool-body]") || root.querySelector("#tool-body");
   if (!host) return () => {};
 
-  const { dom, clipboard, text: textUtils, draft: draftUtils } = utils;
+  const { dom, clipboard, text: textUtils, draft: draftUtils, menu } = utils;
 
   // 实例级配置键：同一工具可开多个实例，各自记住自己的参数（docs/DESIGN.md §9.3）
   const serial = ctx.instance && Number.isInteger(ctx.instance.serial) ? ctx.instance.serial : 1;
@@ -729,11 +730,7 @@ export function init(ctx) {
     statOutputChars: el('[data-stat="output-chars"]'),
     actions: {
       save: el('[data-action="save-preset"]'),
-      remove: el('[data-action="delete-preset"]'),
-      reset: el('[data-action="reset-config"]'),
-      copyJson: el('[data-action="copy-json"]'),
-      exportJson: el('[data-action="export-presets"]'),
-      importJson: el('[data-action="import-presets"]'),
+      more: el('[data-action="more"]'),
       copy: el('[data-action="copy"]'),
       download: el('[data-action="download"]'),
       clear: el('[data-action="clear-input"]'),
@@ -875,16 +872,7 @@ export function init(ctx) {
     nodes.preset.innerHTML = html;
     nodes.preset.value = state.presetId;
 
-    const preset = currentPreset();
-    const hasCustom = state.customPresets.length > 0;
-    nodes.actions.remove.disabled = !preset || preset.builtin === true;
-    nodes.actions.remove.title = nodes.actions.remove.disabled
-      ? "仅自定义预设可删除"
-      : `删除预设「${preset.name}」`;
-    nodes.actions.exportJson.disabled = !hasCustom;
-    nodes.actions.exportJson.title = hasCustom ? "导出全部自定义预设" : "暂无自定义预设可导出";
-    nodes.actions.copyJson.disabled = !hasCustom;
-    nodes.actions.copyJson.title = hasCustom ? "复制预设 JSON" : "暂无自定义预设可复制";
+    /* v1.7.36：删除 / 导出 / 复制 JSON 的可用性改由「更多」菜单在打开时按当下预设判定 */
   }
 
   /** 选中预设并填表（syncing 保护避免误判为手动改动） */
@@ -913,28 +901,89 @@ export function init(ctx) {
     renderPresetOptions();
   }
 
-  /** 两段式内联确认，避免使用 window.confirm */
-  function resetRemoveButton() {
+  /* ------------------------------------------------ 「更多预设操作」菜单（v1.7.36） */
+
+  function openMoreMenu(options) {
+    const initialFocus = options && options.initialFocus === "last" ? "last" : "first";
+    const anchor = nodes.actions.more;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const preset = currentPreset();
+    const removable = Boolean(preset && !preset.builtin);
+    const hasCustom = state.customPresets.length > 0;
+
+    const items = [
+      { label: "复制预设 JSON", disabled: !hasCustom, onSelect: copyJson },
+      { label: "导出预设…", disabled: !hasCustom, onSelect: exportJson },
+      { label: "导入预设…", onSelect: () => toggleImportPanel() },
+      { separator: true },
+      {
+        label: "恢复默认预设",
+        onSelect: () => {
+          clearError();
+          applyPreset("comma");
+        },
+      },
+      { separator: true },
+    ];
+
+    if (state.removeArmed && removable) {
+      items.push({
+        label: `确认删除「${preset.name}」`,
+        danger: true,
+        onSelect: removeCurrentPreset,
+      });
+    } else {
+      items.push({
+        label: "删除当前预设",
+        danger: true,
+        disabled: !removable,
+        onSelect: armRemove,
+      });
+    }
+
+    try {
+      anchor.focus();
+    } catch (error) {
+      /* 忽略 */
+    }
+
+    menu.open({
+      x: rect.right - 184,
+      y: rect.bottom + 4,
+      label: "预设操作",
+      items,
+      initialFocus,
+      onClose: () => {
+        anchor.setAttribute("aria-expanded", "false");
+        disarmRemove();
+      },
+    });
+    anchor.setAttribute("aria-expanded", "true");
+  }
+
+  function disarmRemove() {
+    clearTimer("remove");
     state.removeArmed = false;
-    nodes.actions.remove.classList.remove("is-armed");
-    nodes.actions.remove.innerHTML = `${icons.icon("trash", 15)} 删除`;
   }
 
   function armRemove() {
     const preset = currentPreset();
     if (!preset || preset.builtin) return;
 
-    if (!state.removeArmed) {
-      state.removeArmed = true;
-      nodes.actions.remove.classList.add("is-armed");
-      nodes.actions.remove.innerHTML = "确认删除？";
-      clearTimer("remove");
-      timers.remove = window.setTimeout(resetRemoveButton, 3000);
-      return;
-    }
-
+    state.removeArmed = true;
+    openMoreMenu({ initialFocus: "last" });
     clearTimer("remove");
-    resetRemoveButton();
+    timers.remove = window.setTimeout(() => {
+      if (menu.isOpen()) menu.close(); // 关闭会走 onClose → disarmRemove()
+      else disarmRemove();
+    }, REMOVE_CONFIRM_MS);
+  }
+
+  function removeCurrentPreset() {
+    const preset = currentPreset();
+    disarmRemove();
+    if (!preset || preset.builtin) return;
 
     state.customPresets = state.customPresets.filter((item) => item.id !== preset.id);
     writeSession(readForm(), state.presetId);
@@ -1354,14 +1403,12 @@ export function init(ctx) {
   bind(nodes.actions.download, "click", downloadResult);
 
   bind(nodes.actions.save, "click", openSaveForm);
-  bind(nodes.actions.remove, "click", armRemove);
-  bind(nodes.actions.reset, "click", () => {
-    clearError();
-    applyPreset("comma");
+  bind(nodes.actions.more, "click", openMoreMenu);
+  bind(nodes.actions.more, "keydown", (event) => {
+    if (event.key !== "ArrowDown") return;
+    event.preventDefault();
+    openMoreMenu();
   });
-  bind(nodes.actions.exportJson, "click", exportJson);
-  bind(nodes.actions.copyJson, "click", copyJson);
-  bind(nodes.actions.importJson, "click", () => toggleImportPanel());
 
   bind(nodes.saveForm, "submit", submitSaveForm);
   bind(el('[data-action="cancel-save"]'), "click", closeSaveForm);
@@ -1438,6 +1485,8 @@ export function init(ctx) {
 
   return () => {
     Object.keys(timers).forEach(clearTimer);
+    // 菜单是 host 之外的单例，卸载时必须主动收起
+    if (menu.isOpen()) menu.close();
     disposers.forEach((dispose) => dispose());
     dom.clear(host);
   };

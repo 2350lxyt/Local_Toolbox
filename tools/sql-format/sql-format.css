@@ -100,13 +100,9 @@
   color: var(--warn);
 }
 
-/* 删除按钮的两段式确认态 */
-.sf-toolbar .btn.is-armed {
-  color: var(--danger);
-  background: var(--danger-soft);
-  border-color: var(--danger);
-  border-style: solid;
-}
+/* v1.7.36：原先这里还有 `.sf-toolbar .btn.is-armed`（删除按钮的两段式内联确认态）。
+   删除已收进「更多」菜单，确认态改由菜单项文案表达（`.menu__item--danger`），
+   故整块移除。 */
 
 /* --------------------------------------------------------------- 状态行 */
 

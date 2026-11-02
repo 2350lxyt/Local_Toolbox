@@ -72,13 +72,8 @@
   height: 14px;
 }
 
-/* 删除按钮的两段式确认态 */
-.tlm-toolbar .btn.is-armed {
-  color: var(--danger);
-  background: var(--danger-soft);
-  border-color: var(--danger);
-  border-style: solid;
-}
+/* v1.7.36：`.tlm-toolbar .btn.is-armed`（删除按钮的内联确认态）已随「删除」移入「更多」菜单而移除，
+   确认态改由 `.menu__item--danger` 的文案表达。 */
 
 /* --------------------------------------------------------------- 状态行 */
 

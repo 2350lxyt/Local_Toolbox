@@ -1539,13 +1539,11 @@ const TEMPLATE = `
     <label class="meta-label" for="sf-preset">预设</label>
     <select class="select sf-preset" id="sf-preset"></select>
     <button class="btn" type="button" data-action="save-preset">__I_SAVE__ 另存为</button>
-    <button class="btn" type="button" data-action="delete-preset">__I_TRASH__ 删除</button>
-    <button class="icon-btn" type="button" data-action="reset-config" title="恢复默认预设"
-            aria-label="恢复默认预设">__I_REFRESH__</button>
-    <button class="icon-btn" type="button" data-action="copy-json" title="复制预设 JSON"
-            aria-label="复制预设 JSON">__I_JSON__</button>
-    <button class="btn" type="button" data-action="export-presets">__I_DOWNLOAD__ 导出</button>
-    <button class="btn" type="button" data-action="import-presets">__I_UPLOAD__ 导入</button>
+    <!-- v1.7.36：预设的「删除 / 恢复默认 / 复制 JSON / 导出 / 导入」收进这个菜单。
+         它们全是低频且不可撤销的批量操作，平铺时把工具条挤成两行（1440px 下首行右侧空 605px）。
+         菜单组件见 assets/js/utils/menu.js 与 docs/DESIGN.md §5.3。 -->
+    <button class="icon-btn" type="button" data-action="more" title="更多预设操作"
+            aria-label="更多预设操作" aria-haspopup="menu" aria-expanded="false">__I_MORE__</button>
   </div>
   <div class="sf-toolbar__group">
     <label class="checkbox" title="开启后，输入内容将明文保存在本机浏览器（永不上传）；关闭开关即清除已存草稿">
@@ -1828,6 +1826,7 @@ const ICON_TOKENS = {
   __I_CLOSE__: ["close", 15],
   __I_ALERT__: ["alert", 18],
   __I_COPY__: ["copy", 15],
+  __I_MORE__: ["more", 15],
 };
 
 /* ========================================================== 通用小工具 */
@@ -1881,7 +1880,7 @@ export function init(ctx) {
   const host = root.querySelector("[data-tool-body]") || root.querySelector("#tool-body");
   if (!host) return () => {};
 
-  const { dom, clipboard, text: textUtils, draft: draftUtils } = utils;
+  const { dom, clipboard, text: textUtils, draft: draftUtils, menu } = utils;
   const escapeHtml = dom.escapeHtml;
 
   // 实例级配置键：同一工具可开多个实例，各自记住自己的参数（docs/DESIGN.md §9.3）
@@ -1947,11 +1946,7 @@ export function init(ctx) {
       findNext: el('[data-action="find-next"]'),
       findClose: el('[data-action="find-close"]'),
       save: el('[data-action="save-preset"]'),
-      remove: el('[data-action="delete-preset"]'),
-      reset: el('[data-action="reset-config"]'),
-      copyJson: el('[data-action="copy-json"]'),
-      exportJson: el('[data-action="export-presets"]'),
-      importJson: el('[data-action="import-presets"]'),
+      more: el('[data-action="more"]'),
       copy: el('[data-action="copy"]'),
       download: el('[data-action="download"]'),
       clear: el('[data-action="clear"]'),
@@ -2486,17 +2481,8 @@ export function init(ctx) {
 
     nodes.preset.innerHTML = html;
     nodes.preset.value = state.presetId;
-
-    const preset = currentPreset();
-    const hasCustom = state.customPresets.length > 0;
-    nodes.actions.remove.disabled = !preset || preset.builtin === true;
-    nodes.actions.remove.title = nodes.actions.remove.disabled
-      ? "仅自定义预设可删除"
-      : `删除预设「${preset.name}」`;
-    nodes.actions.exportJson.disabled = !hasCustom;
-    nodes.actions.exportJson.title = hasCustom ? "导出全部自定义预设" : "暂无自定义预设可导出";
-    nodes.actions.copyJson.disabled = !hasCustom;
-    nodes.actions.copyJson.title = hasCustom ? "复制预设 JSON" : "暂无自定义预设可复制";
+    /* v1.7.36：删除 / 导出 / 复制 JSON 的可用性不再落在按钮上 ——
+       它们已收进「更多」菜单，禁用态在 openMoreMenu() 里按当下的预设重新判定。 */
   }
 
   /** 选中预设并填表（syncing 标记避免被误判为手动改动） */
@@ -2551,28 +2537,96 @@ export function init(ctx) {
     }
   }
 
-  /** 两段式内联确认，避免使用 window.confirm */
-  function resetRemoveButton() {
+  /* ------------------------------------------------ 「更多预设操作」菜单（v1.7.36） */
+
+  /** 打开菜单：从「更多」按钮下方弹出，右缘贴按钮右缘 */
+  function openMoreMenu(options) {
+    const initialFocus = options && options.initialFocus === "last" ? "last" : "first";
+    const anchor = nodes.actions.more;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const preset = currentPreset();
+    const removable = Boolean(preset && !preset.builtin);
+    const hasCustom = state.customPresets.length > 0;
+
+    const items = [
+      { label: "复制预设 JSON", disabled: !hasCustom, onSelect: copyJson },
+      { label: "导出预设…", disabled: !hasCustom, onSelect: exportJson },
+      { label: "导入预设…", onSelect: () => toggleImportPanel() },
+      { separator: true },
+      {
+        label: "恢复默认预设",
+        onSelect: () => {
+          clearError();
+          applyPreset("standard");
+        },
+      },
+      { separator: true },
+    ];
+
+    /* 删除是两段式：第一次选中后菜单原地重开，把这一项换成「确认删除「名称」」，
+       点外面或 Esc 收起即复位。沿用原先 3 秒自动复位的节奏（REMOVE_CONFIRM_MS）。 */
+    if (state.removeArmed && removable) {
+      items.push({
+        label: `确认删除「${preset.name}」`,
+        danger: true,
+        onSelect: removeCurrentPreset,
+      });
+    } else {
+      items.push({
+        label: "删除当前预设",
+        danger: true,
+        disabled: !removable,
+        onSelect: armRemove,
+      });
+    }
+
+    // 先把焦点放到触发按钮上：菜单会把它记为「关闭后还焦点给谁」，
+    // 这样 Esc 收起时焦点一定回到「更多」，而不是掉到 body（键盘用户会迷路）
+    try {
+      anchor.focus();
+    } catch (error) {
+      /* 忽略 */
+    }
+
+    menu.open({
+      x: rect.right - 184,
+      y: rect.bottom + 4,
+      label: "预设操作",
+      items,
+      initialFocus,
+      onClose: () => {
+        anchor.setAttribute("aria-expanded", "false");
+        disarmRemove();
+      },
+    });
+    anchor.setAttribute("aria-expanded", "true");
+  }
+
+  /** 清掉待确认态（不碰 DOM，菜单项在下次打开时按 state 重建） */
+  function disarmRemove() {
+    clearTimer("remove");
     state.removeArmed = false;
-    nodes.actions.remove.classList.remove("is-armed");
-    nodes.actions.remove.innerHTML = `${icons.icon("trash", 15)} 删除`;
   }
 
   function armRemove() {
     const preset = currentPreset();
     if (!preset || preset.builtin) return;
 
-    if (!state.removeArmed) {
-      state.removeArmed = true;
-      nodes.actions.remove.classList.add("is-armed");
-      nodes.actions.remove.innerHTML = "确认删除？";
-      clearTimer("remove");
-      timers.remove = window.setTimeout(resetRemoveButton, REMOVE_CONFIRM_MS);
-      return;
-    }
-
+    state.removeArmed = true;
+    openMoreMenu({ initialFocus: "last" });
     clearTimer("remove");
-    resetRemoveButton();
+    timers.remove = window.setTimeout(() => {
+      if (menu.isOpen()) menu.close(); // 关闭会走 onClose → disarmRemove()
+      else disarmRemove();
+    }, REMOVE_CONFIRM_MS);
+  }
+
+  function removeCurrentPreset() {
+    const preset = currentPreset();
+    disarmRemove();
+    if (!preset || preset.builtin) return;
+
     state.customPresets = state.customPresets.filter((item) => item.id !== preset.id);
     const saved = saveCustomPresets(state.customPresets);
     if (!saved) showError("本地存储不可用，删除结果仅在当前页面内有效。");
@@ -2948,14 +3002,13 @@ export function init(ctx) {
   bind(nodes.saveForm, "submit", submitSaveForm);
   bind(nodes.actions.cancelSave, "click", closeSaveForm);
   bind(nodes.actions.save, "click", openSaveForm);
-  bind(nodes.actions.remove, "click", armRemove);
-  bind(nodes.actions.reset, "click", () => {
-    clearError();
-    applyPreset("standard");
+  bind(nodes.actions.more, "click", openMoreMenu);
+  // ArrowDown 直接展开首项，免得键盘用户还要多按一次 Tab 才进菜单
+  bind(nodes.actions.more, "keydown", (event) => {
+    if (event.key !== "ArrowDown") return;
+    event.preventDefault();
+    openMoreMenu();
   });
-  bind(nodes.actions.exportJson, "click", exportJson);
-  bind(nodes.actions.copyJson, "click", copyJson);
-  bind(nodes.actions.importJson, "click", () => toggleImportPanel());
   host.querySelectorAll('[data-action="close-import"]').forEach((node) => {
     bind(node, "click", () => toggleImportPanel(false));
   });
@@ -3063,6 +3116,8 @@ export function init(ctx) {
 
   return () => {
     Object.keys(timers).forEach(clearTimer);
+    // 菜单是 host 之外的单例，卸载时必须主动收起，否则会留下一个指向已销毁实例的浮层
+    if (menu.isOpen()) menu.close();
     if (renderRaf) window.cancelAnimationFrame(renderRaf);
     if (scrollRaf) window.cancelAnimationFrame(scrollRaf);
     if (selectionRaf) window.cancelAnimationFrame(selectionRaf);
