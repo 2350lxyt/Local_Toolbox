@@ -325,6 +325,17 @@
   white-space: normal;
 }
 
+/* 降级态（v1.7.34）：整块替换对比时，四个分项计数与相似度都不成立。
+   数字统一显示为「—」并退到 muted —— 保留占位、不跳动，但不给任何「这是真实统计」的暗示。
+   颜色规则的特异性 (0,3,1) 高于 .td-meta__item--insert b 等 (0,1,1)，可盖住绿/红/橙。 */
+.td-meta__flag {
+  flex: 0 0 auto;
+}
+
+.td-meta[data-degraded="true"] .td-meta__item b {
+  color: var(--text-muted);
+}
+
 .td-meta__item b {
   font-family: var(--font-mono);
   font-size: var(--fs-sm);

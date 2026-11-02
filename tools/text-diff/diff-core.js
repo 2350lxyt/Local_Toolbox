@@ -411,6 +411,8 @@ export function diffLines(leftText, rightText, options) {
   }));
 
   // 统计
+  // 注意：`degraded === true` 时下面的分项计数与 similarity **没有意义** ——
+  // 所有行都被记为改动，same 恒为 0，similarity 必然为 0%。调用方须先看 degraded。
   const stats = { insert: 0, delete: 0, modify: 0, same: 0 };
   rows.forEach((row) => {
     stats[row.kind] += 1;

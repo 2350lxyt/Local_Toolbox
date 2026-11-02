@@ -169,6 +169,9 @@ const TEMPLATE = `
   <span class="td-meta__item td-meta__item--delete">删除 <b data-stat="delete">0</b></span>
   <span class="td-meta__item td-meta__item--modify">修改 <b data-stat="modify">0</b></span>
   <span class="td-meta__item">相同 <b data-stat="same">0</b></span>
+  <!-- 降级标记（v1.7.34）：粗粒度对比时分项计数与相似度都不成立，
+       不能只靠一条几秒后自动消失的状态提示交代，须常驻在统计条里 -->
+  <span class="badge badge--warn td-meta__flag" data-degraded-flag hidden>已降级</span>
   <span class="td-meta__item" data-summary></span>
 </div>
 
@@ -317,6 +320,8 @@ export function init(ctx) {
     wrapToggle: el('[data-action="toggle-softwrap"]'),
     diffCount: el("[data-diff-count]"),
     summary: el("[data-summary]"),
+    meta: el(".td-meta"),
+    degradedFlag: el("[data-degraded-flag]"),
     stats: {
       insert: el('[data-stat="insert"]'),
       delete: el('[data-stat="delete"]'),
@@ -539,8 +544,11 @@ export function init(ctx) {
 
   function compute() {
     clearTimer("debounce");
+    // 只在「进入降级」的那一刻播报一次。此前每次重算都调 setStatus，
+    // 降级状态下连续输入会把同一条提示反复重置、永不消失（统计条已有常驻标记）。
+    const wasDegraded = state.result ? state.result.degraded === true : false;
     state.result = diffLines(state.text.left, state.text.right, state.config);
-    if (state.result.degraded) setStatus(state.result.reason, "warn");
+    if (state.result.degraded && !wasDegraded) setStatus(state.result.reason, "warn");
     scheduleRender();
   }
 
@@ -781,13 +789,28 @@ export function init(ctx) {
   /* ── 渲染：统计 / 计数 / 视图切换 ───────────────────────── */
   function renderStats() {
     const stats = state.result.stats;
-    nodes.stats.insert.textContent = String(stats.insert);
-    nodes.stats.delete.textContent = String(stats.delete);
-    nodes.stats.modify.textContent = String(stats.modify);
-    nodes.stats.same.textContent = String(stats.same);
+    /* 降级（粗粒度整块替换）时，四个分项与相似度**都不成立**：
+       所有行被记为改动，「相同」恒为 0，相似度必然是 0%。
+       照常显示数字会被读成「两段文本毫无关系」，而实情是「算不动、没算」。
+       因此降级时一律不出数字，改由常驻标记 + 整句说明交代（v1.7.34）。 */
+    const degraded = state.result.degraded === true;
+    const keys = ["insert", "delete", "modify", "same"];
+
+    for (const key of keys) {
+      nodes.stats[key].textContent = degraded ? "—" : String(stats[key]);
+    }
+    nodes.meta.dataset.degraded = degraded ? "true" : "false";
+    nodes.degradedFlag.hidden = !degraded;
 
     if (stats.base === 0) {
       nodes.summary.textContent = "两侧均为空：粘入文本或拖入文件后开始对比。";
+      return;
+    }
+
+    if (degraded) {
+      /* 与上方状态提示分工：状态提示负责「为什么」（编辑距离超限，播报一次后消失），
+         这里负责「现在的数字算不算数」（常驻）。两者措辞不重复，避免同一句话说两遍。 */
+      nodes.summary.textContent = "分项计数与相似度不可用（整块替换对比下不成立）。";
       return;
     }
 
