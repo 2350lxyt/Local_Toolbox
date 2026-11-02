@@ -177,7 +177,7 @@
   top: 0;
   z-index: 1;
   background: var(--bg-inset);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
   font-weight: var(--fw-medium);
   color: var(--text-muted);
 }
@@ -311,7 +311,7 @@
 }
 
 .fc-table-foot__meta {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
   color: var(--text-muted);
 }
 
@@ -333,7 +333,7 @@
 .fc-step__index {
   padding-top: 2px;
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
   color: var(--text-faint);
 }
 
@@ -349,6 +349,8 @@
   flex-wrap: wrap;
   gap: var(--sp-1) var(--sp-2);
   margin-top: 2px;
+  /* v1.7.32：这里装的是整句解释（「把变量替换为各自填写的取值」「步骤过多，已省略中间的 N 步」），
+     不是标注，按 §3.3 的分级应归 12px。 */
   font-size: var(--fs-xs);
   color: var(--text-muted);
 }
@@ -378,7 +380,7 @@
 }
 
 .fc-result-line__label {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
   color: var(--text-muted);
 }
 
@@ -456,7 +458,7 @@
   flex-wrap: wrap;
   gap: var(--sp-2);
   margin-top: 2px;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
   color: var(--text-muted);
 }
 
@@ -557,7 +559,7 @@
 }
 
 .fc-panel-meta {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
   color: var(--text-muted);
 }
 

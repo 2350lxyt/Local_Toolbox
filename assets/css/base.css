@@ -216,13 +216,15 @@ button:disabled {
   color: var(--accent-contrast);
 }
 
-/* 元信息标签：小号、大写、拉开字距 */
+/* 元信息标签：小号、大写、微拉字距 */
 .meta-label {
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  /* v1.7.32：去 mono。这个类实际装的是「工具集」「方言」「预设」这类中文标签，
+     mono 对中文只能回退，字距被 --tracking-label 的 .12em 拉到可疑；英文 slug 仍靠
+     text-transform 大写维持元信息感。 */
+  font-size: var(--fs-2xs);
   font-weight: var(--fw-medium);
   text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  letter-spacing: 0.04em;
   color: var(--text-muted);
 }
 

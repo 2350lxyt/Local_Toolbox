@@ -177,7 +177,7 @@
   flex: 0 0 auto;
   /* v1.7.12：改用令牌（原为硬编码 1px 6px / 10px，违反 §3.4 间距取自刻度） */
   padding: 2px var(--sp-2);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
   font-weight: var(--fw-medium);
   letter-spacing: 0.04em;
   color: var(--warn);
@@ -540,7 +540,7 @@
 
 .tool-card__index {
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
   font-weight: var(--fw-medium);
   letter-spacing: 0.08em;
   font-variant-numeric: tabular-nums;
@@ -597,7 +597,7 @@
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
   font-weight: var(--fw-medium);
   letter-spacing: 0.04em;
   border-radius: var(--r-pill);

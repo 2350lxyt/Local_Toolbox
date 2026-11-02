@@ -101,7 +101,7 @@
 
 .td-nav__count {
   min-width: 92px;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -277,7 +277,8 @@
 
 .td-field__label {
   font-size: var(--fs-xs);
-  letter-spacing: var(--tracking-label);
+  /* v1.7.32：这里是中文标签（「字号（px）」「代码高亮语言」…），0.12em 字距会把中文拉散 */
+  letter-spacing: 0.02em;
   color: var(--text-muted);
 }
 
@@ -303,6 +304,8 @@
   align-items: center;
   gap: var(--sp-1) var(--sp-3);
   margin: var(--sp-2) 0 0;
+  /* v1.7.32：11px → 12px。这条统计条里除了「新增/删除」这类计数，还挂着
+     [data-summary] 的整句说明（「两侧均为空；粘贴文本或拖入文件后开始对比。」），属要读的文本。 */
   font-size: var(--fs-xs);
   color: var(--text-muted);
 }
@@ -383,7 +386,7 @@
 .td-search__count {
   min-width: 44px;
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }

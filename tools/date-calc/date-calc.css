@@ -162,11 +162,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-.dc-stat .stat__label {
-  font-size: var(--fs-xs);
-  letter-spacing: var(--tracking-label);
-  color: var(--text-muted);
-}
+/* v1.7.32：删除 .dc-stat .stat__label 的覆盖 —— 它只是把 tool.css 里同一套
+   字号/字距/颜色重写一遍，反而会把那边的修正（中文去掉 0.12em 字距）盖回去。
+   现在直接继承 .stat__label。 */
 
 .dc-stat.is-primary {
   border-color: var(--accent);
@@ -189,8 +187,8 @@
 
 .dc-result__label {
   margin: 0;
-  font-size: var(--fs-xs);
-  letter-spacing: var(--tracking-label);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.04em;
   color: var(--text-muted);
 }
 
@@ -245,8 +243,8 @@
 .dc-cal__head {
   padding: var(--sp-1) 0;
   text-align: center;
-  font-size: var(--fs-xs);
-  letter-spacing: var(--tracking-label);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.04em;
   color: var(--text-muted);
 }
 
@@ -352,7 +350,7 @@
   min-width: 18px;
   padding: 0 3px;
   border-radius: var(--r-xs);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
   font-weight: var(--fw-medium);
   line-height: 1.35;
 }

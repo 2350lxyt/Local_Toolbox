@@ -4,9 +4,29 @@
 > 后续任何功能调整都必须先比对本文档；若确需改变既定设计，**必须先更新本文档并写明变更理由**，再改动代码。
 > 提交信息的正文中请引用相关章节（例如 `refs docs/DESIGN.md §10.3`）。
 
-- 文档版本：1.7.31
-- 最近更新：2026-10-30
+- 文档版本：1.7.32
+- 最近更新：2026-11-02
 - 对应代码版本：v0.1.0
+
+> **v1.7.32 变更摘要（B 级 · 字号刻度分两级 + 等宽字体退出中文说明）**：
+> 来源：第四轮界面审查，针对前几轮遗留的「11px 提示偏多、中文被等宽字体拉散」。
+> ① **`--fs-xs` 11px → 12px**，并新增 **`--fs-2xs: 11px`**。原先只有一个「最小字号」令牌，
+> 说明文字（要读的句子）和标注（不当句子读的角标）挤在同一档，把说明压到 11px 才能不挤、结果中文说明整体偏小。
+> 现在按**是否作为句子阅读**分级：
+> `--fs-xs`（12px）给说明 / 状态 / 空态 / 交互控件文字；`--fs-2xs`（11px）只给不当句子读的标注：
+> 计数（`.nav__badge` `.sf-find__count` `.td-nav__count` `.td-search__count`）、序号（`.tool-card__index` `.fc-step__index`）、
+> 徽标（`.badge` `.dc-tag`）、表头（`.fc-table thead th` `.dc-cal__head`）、元信息键（`.meta-label` `.fc-*-meta` `.fc-table-foot__meta`）、`kbd`。
+> 其中两处容易被误判成「标注」，实测内容其实是整句：`.td-meta`（挂着 `[data-summary]` 的空态提示）
+> 与 `.fc-step__meta`（「把变量替换为各自填写的取值」），都留在 12px。
+> ② **等宽字体退出中文说明**：`.panel__hint` 与 `.stat__label` 原为 `--font-mono`，但内容全是中文句子/词
+> （「零网络请求 · 零数据上传」「工作日 / 休息日按中国日历判定」「自然日 / 工作日 / 休息日」）。
+> `--font-mono` 的中文只能回退到系统字体，于是**拉丁部分按等宽排、中文按比例排**，同一句话两种节奏，
+> 观感比正文更松散；`.stat__label` 还叠了 `text-transform: uppercase`（对中文无效）与 `--tracking-label 0.12em`（把中文字距拉松到可疑）。
+> 改为正文字体，数字列用 `font-variant-numeric: tabular-nums` 保对齐，字距降到 `0.02em`。
+> ③ **删除一行会反噬的覆盖规则**：`.dc-stat .stat__label` 只是把 `tool.css` 里同一套字号/字距/颜色重写一遍，
+> 会把 ② 的修正盖回去，直接删掉改为继承。
+> 验证：5 工具 × 4 档宽度（1440 / 1000 / 700 / 560）无新增横向溢出、面板标题仍单行、面板头高度不变；
+> 明暗两套主题实拍核对。受影响章节：§3.3 / §5（组件表「统计」行）/ §18 令牌速查。
 
 > **v1.7.31 变更摘要（B 级 · 面板头标题不再被压缩 + 《日期天数计算器》删除「推算」伪主操作）**：
 > 来源：第三轮界面审查，1440 / 1100 / 1000 / 860 / 700 / 560 六档实测。
@@ -864,12 +884,23 @@
 | --- | --- |
 | `--font-sans` | `"DIN Next", Bahnschrift, "思源黑体", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif` |
 | `--font-mono` | `"Cascadia Mono", Consolas, "SFMono-Regular", Menlo, "DejaVu Sans Mono", "Courier New", monospace` |
-| 字号 | `--fs-display 30` `--fs-h1 28` `--fs-h2 20` `--fs-h3 15` `--fs-body 14` `--fs-sm 13` `--fs-xs 11`（px） |
+| 字号 | `--fs-display 30` `--fs-h1 28` `--fs-h2 20` `--fs-h3 15` `--fs-body 14` `--fs-sm 13` `--fs-xs 12` `--fs-2xs 11`（px） |
 | 字重 | `--fw-regular 400` / `--fw-medium 500` / `--fw-semibold 600` |
 | 行高 | `--lh-tight 1.25` / `--lh-normal 1.55` / `--lh-loose 1.75` |
-| 字距 | `--tracking-label .12em`（小号大写元信息） / `--tracking-tight -.01em`（标题） |
+| 字距 | `--tracking-label .12em`（**仅限全大写拉丁**的元信息） / `--tracking-tight -.01em`（标题） |
 
-约定：标题 600 字重；正文 400；元信息一律用 `.meta-label`（小号 + 大写 + 拉字距 + `--text-muted`）；数字与代码一律用 `.mono`（等宽 + `tabular-nums`）。
+约定：标题 600 字重；正文 400；数字与代码一律用 `.mono`（等宽 + `tabular-nums`）；元信息一律用 `.meta-label`
+（小号 + 大写 + 微拉字距 + `--text-muted`；v1.7.32 起**不再使用等宽字体**，字距由 `0.12em` 降到 `0.04em`，
+原因见下面「等宽字体的使用边界」）。
+
+**字号两档的划分标准（v1.7.32，硬性）**：`--fs-xs`（12px）用于**作为句子被读到的文本**——说明、状态、空态、
+提示、交互控件文字（按钮/开关/页签内的文字）；`--fs-2xs`（11px）只用于**不作为句子读的标注**——计数与序号、
+徽标角标、表头、`kbd`、元信息键。新增 11px 用法前先问：这串字会被逐字读吗？会被读就用 `--fs-xs`。
+
+**等宽字体的使用边界（v1.7.32，硬性）**：`--font-mono` **只用于数字、代码、需要逐字对齐的文本**（`.output`、公式、
+SQL、结果数值、日期范围）；**不得用于中文说明句与中文标签**。原因：`--font-mono` 的候选字体都不含中文字形，
+中文必然回退到系统字体，同一行里拉丁字符按等宽排、中文按比例排，节奏割裂且比正文更松散。同理，
+`--tracking-label 0.12em` 是给**全大写拉丁**拉开字距用的，中文标签不要套（中文只需 `0.02em` 以内）。
 
 ### 3.4 间距 / 圆角 / 阴影 / 动效
 
@@ -1072,7 +1103,7 @@
 | 状态灯 | `.status-lamp` | 6px 空心圆，随父级 `currentColor` 着色；仅非 ready 出现（v1.7.11） |
 | 空状态 | `.empty` `.empty__icon` `.empty__title` `.empty__text` | 虚线框 + **20px 前置图标**（v1.7.12）+ 引导文案 |
 | 输出区 | `.output` | 等宽、`pre-wrap`、`break-word`、可选中 |
-| 统计 | `.stats` `.stat__value` `.stat__label` | 值为等宽大号，标签为 `.meta-label` 风格 |
+| 统计 | `.stats` `.stat__value` `.stat__label` | 值为等宽大号 + `tabular-nums`；标签为 12px 正文字体、`0.02em` 字距、`--text-muted`（v1.7.32：原为 mono + 大写 + `.12em`，中文标签被拉散） |
 | 元信息 | `.meta-label` `.mono` `.rule` | — |
 | 标签栏 | `.tabstrip` `.tabstrip__list` `.tabstrip__hint` `.tabstrip__scroll` `.tab` `.tab__main` `.tab__name` `.tab__close` `.tab__menu` `.tab__rename` | 基线见 §5.2；`.tabstrip__scroll` 为 v1.4.0 新增的溢出滚动按钮 |
 | 首页面板 | `.tabpanel--home` | 首页常驻标签的面板（承载 `.home-view`）；版式与首页一致（`--content-max` + 原内边距） |
@@ -1135,7 +1166,7 @@
 | `.tabstrip__scroll`（标签栏滚动按钮，v1.4.0） | 26px 方形图标按钮，位于标签列表两端；**仅溢出时显示**，未溢出与到端分别用 `hidden` / `disabled`（`opacity: .4`）表达；不改变标签栏高度 | `--r-xs` / `--text-muted` |
 | `.tabpanel--home` | 首页面板：`max-width: --content-max`、内边距 `--sp-8` / `clamp(--sp-5,4vw,--sp-12)` / `--sp-16` | `--content-max` / `--sp-8` / `--sp-12` / `--sp-16` |
 | `.tab--home`（首页标签，v1.4.0；**v1.7.26 钉住**） | **只显示图标**（15px `home` 图标，无文字）；`.tab__main` 收紧为 `padding: 0 --sp-2` 使标签成为紧凑图标标签；高度、活动态与普通标签一致（`--tabstrip-h` 不变）。**v1.7.26：`position: sticky; left: 0; z-index: 3`**，背景必须不透明（`--bg-inset`，活动态 `--bg-surface`）；列表滚动超过 1px 时由 `.tabstrip__list.is-scrolled` 在其右侧显示 1px 边界线。理由：首页是唯一不可关闭的常驻入口，原实现中它会随列表滚出视口（实测 5 标签 / 1000px 时左边界 -81px），而 tabs 模式下面包屑「工具集」不可点 | `--sp-2` `--bg-inset` `--hairline` |
-| `.tabstrip__hint`（右侧操作提示） | 11px、`--text-muted`；**单行 + 省略号**（v1.7.26：原 `flex: 0 0 auto` 无 ellipsis，在 ~1000px 下被裁成半句）；`≤900px` 隐藏 | `--fs-xs` / `--text-muted` |
+| `.tabstrip__hint`（右侧操作提示） | 12px、`--text-muted`；**单行 + 省略号**（v1.7.26：原 `flex: 0 0 auto` 无 ellipsis，在 ~1000px 下被裁成半句）；`≤900px` 隐藏 | `--fs-xs` / `--text-muted` |
 | 关闭待确认（v1.7.28 起为**覆盖式**） | 「确认关闭」文字绝对定位**铺满整枚标签**（危险色文字 + 危险色描边 + 危险浅底）；关闭按钮**保持原 20px 占位**、`.tab__name` / `.tab__icon` / `.tab__menu` 用 `visibility: hidden` 隐藏（仍占位）⇒ **标签宽度不变、相邻标签不位移** | `--danger` / `--danger-soft` |
 | 拖拽中的源标签 | 降至 40% 不透明度 | — |
 | `.tabpanel` 内边距 | 上 24px、左右 16~32px（随栏宽）、下 64px | `--sp-6` / `--sp-4`~`--sp-8` / `--sp-16` |
@@ -3015,7 +3046,7 @@ export function parseCellValue(text)                // -> { ok, value, raw, empt
         --accent --accent-hover --accent-soft --accent-ring --accent-contrast
         --ok --ok-soft --warn --warn-soft --danger --danger-soft --info --info-soft
 字体    --font-sans --font-mono
-字号    --fs-display --fs-h1 --fs-h2 --fs-h3 --fs-body --fs-sm --fs-xs
+字号    --fs-display --fs-h1 --fs-h2 --fs-h3 --fs-body --fs-sm --fs-xs --fs-2xs
 字重    --fw-regular --fw-medium --fw-semibold
 行高    --lh-tight --lh-normal --lh-loose
 字距    --tracking-tight --tracking-label
