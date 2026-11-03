@@ -18,6 +18,10 @@
  *       { separator: true },
  *       { label: "复制整表（含表头）", onSelect: fn },
  *       { label: "不可用的项", disabled: true, onSelect: fn },
+ *       // 勾选项（v1.7.38）：`checked` 一旦给出就是 menuitemcheckbox。
+ *       // `keepOpen: true` 表示「这是选项不是动作」—— 点完不关菜单，
+ *       // `onSelect` 返回新 items 则原地重渲染，焦点停在这一项上。
+ *       { label: "包含结果列", checked: true, keepOpen: true, onSelect: () => nextItems },
  *     ],
  *   });
  */
@@ -32,6 +36,8 @@ let returnFocus = null;
 let opened = false;
 /** 关闭时的回调（调用方用来同步 `aria-expanded`、复位自身的待确认态） */
 let onCloseHook = null;
+/** 最近一次打开的位置（`update()` 原地重渲染时要沿用，v1.7.38） */
+let lastPosition = { x: 0, y: 0 };
 
 const VIEWPORT_MARGIN = 8;
 
@@ -93,26 +99,62 @@ function focusableItems() {
 function buildItem(spec) {
   if (spec.separator) return el("div", { className: "menu__sep", attrs: { role: "separator" } });
 
+  // `checked` 一旦出现就是勾选项（v1.7.38）：语义是 menuitemcheckbox。
+  // 勾选标记位对**每一项**都渲染（非勾选项留空），由 `.menu--check` 统一缩进 ——
+  // 只给勾选项加位的话，勾选那一行的文字会比其它项右移一格，看上去像没对齐。
+  const isCheckbox = typeof spec.checked === "boolean";
   const node = el("button", {
-    className: `menu__item${spec.danger ? " menu__item--danger" : ""}`,
+    className: `menu__item${spec.danger ? " menu__item--danger" : ""}${isCheckbox ? " menu__item--check" : ""}`,
     attrs: {
       type: "button",
-      role: "menuitem",
+      role: isCheckbox ? "menuitemcheckbox" : "menuitem",
       tabindex: "-1",
       "aria-disabled": spec.disabled ? "true" : null,
+      "aria-checked": isCheckbox ? String(spec.checked) : null,
     },
   });
+  node.appendChild(
+    el("span", {
+      className: "menu__check",
+      text: isCheckbox && spec.checked ? "✓" : "",
+      attrs: { "aria-hidden": "true" },
+    })
+  );
   node.appendChild(el("span", { className: "menu__label", text: spec.label }));
   if (spec.shortcut) node.appendChild(el("span", { className: "menu__shortcut", text: spec.shortcut }));
 
   node.addEventListener("click", (event) => {
     event.preventDefault();
     if (spec.disabled) return;
+    // 选项类项不关菜单：勾完还要接着点上面的复制项，关掉等于逼用户重开一次
+    if (spec.keepOpen) {
+      const next = typeof spec.onSelect === "function" ? spec.onSelect(event) : null;
+      if (Array.isArray(next)) update(next);
+      return;
+    }
     close();
     if (typeof spec.onSelect === "function") spec.onSelect(event);
   });
 
   return node;
+}
+
+/** 按视口夹回后落位（`open` 与 `update` 共用，v1.7.38） */
+function place(x, y) {
+  const node = deck;
+  if (!node) return;
+  const rect = node.getBoundingClientRect();
+  const maxX = window.innerWidth - rect.width - VIEWPORT_MARGIN;
+  const maxY = window.innerHeight - rect.height - VIEWPORT_MARGIN;
+  node.style.left = `${Math.round(Math.max(VIEWPORT_MARGIN, Math.min(x, maxX)))}px`;
+  node.style.top = `${Math.round(Math.max(VIEWPORT_MARGIN, Math.min(y, maxY)))}px`;
+}
+
+/** 渲染一组项；菜单里只要有一个勾选项，就给整份菜单开启「勾选列缩进」模式 */
+function render(items) {
+  if (!deck) return;
+  deck.replaceChildren(...items.map(buildItem));
+  deck.classList.toggle("menu--check", items.some((item) => item && typeof item.checked === "boolean"));
 }
 
 /**
@@ -132,12 +174,13 @@ export function open(options) {
 
   close();
   const node = ensureDeck();
-  node.replaceChildren(...items.map(buildItem));
+  render(items);
   if (label) node.setAttribute("aria-label", label);
   else node.removeAttribute("aria-label");
 
   returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   opened = true;
+  lastPosition = { x, y };
   // 必须在 close() 之后赋值：close() 会把上一个菜单的回调清掉
   onCloseHook = typeof onCloseOption === "function" ? onCloseOption : null;
 
@@ -145,16 +188,29 @@ export function open(options) {
   node.hidden = false;
   node.style.left = "0px";
   node.style.top = "0px";
-  const rect = node.getBoundingClientRect();
-  const maxX = window.innerWidth - rect.width - VIEWPORT_MARGIN;
-  const maxY = window.innerHeight - rect.height - VIEWPORT_MARGIN;
-  const left = Math.max(VIEWPORT_MARGIN, Math.min(x, maxX));
-  const top = Math.max(VIEWPORT_MARGIN, Math.min(y, maxY));
-  node.style.left = `${Math.round(left)}px`;
-  node.style.top = `${Math.round(top)}px`;
+  place(x, y);
 
   const focusables = focusableItems();
   const target = initialFocus === "last" ? focusables[focusables.length - 1] : focusables[0];
+  if (target) target.focus();
+}
+
+/**
+ * 原地重渲染菜单内容（v1.7.38）。
+ * 给「勾选项」用：切换后保持菜单位置与焦点项，用户接着点上面的动作项即可。
+ * 位置沿用最近一次 `open()` 的坐标，并按新内容的高度重新夹回视口。
+ * @param {Array} items
+ */
+export function update(items) {
+  if (!opened || !deck || !Array.isArray(items) || !items.length) return;
+  const current = document.activeElement;
+  const index = focusableItems().indexOf(current);
+
+  render(items);
+  place(lastPosition.x, lastPosition.y);
+  const focusables = focusableItems();
+  if (!focusables.length) return;
+  const target = focusables[index >= 0 ? Math.min(index, focusables.length - 1) : 0];
   if (target) target.focus();
 }
 

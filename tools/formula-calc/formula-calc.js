@@ -573,6 +573,8 @@ export function init(ctx) {
      */
     autoFilled: {},
     storageWarned: false,
+    /** 复制时是否附上「结果」列（v1.7.38）。纯视图偏好，不落盘、不进历史 —— 关掉页面即复位。 */
+    copyWithResult: false,
     armed: { clearFormula: false, clearHistory: false, deleteId: "" },
   };
 
@@ -1058,13 +1060,15 @@ export function init(ctx) {
     return String(value === undefined || value === null ? "" : value).replace(/[\t\r\n]+/g, " ");
   }
 
-  function buildTsv(range, withHeader) {
+  function buildTsv(range, withHeader, withResult) {
     const lines = [];
     if (withHeader) {
       const names = [];
       for (let col = range.c0; col <= range.c1; col += 1) {
         names.push(tsvSafe(state.variables[col] ? state.variables[col].name : ""));
       }
+      // 结果列不在选区网格里（data-grid 只覆盖变量列），是「附在最后」的一列
+      if (withResult) names.push("结果");
       lines.push(names.join("\t"));
     }
     for (let row = range.r0; row <= range.r1; row += 1) {
@@ -1074,6 +1078,8 @@ export function init(ctx) {
         const variable = state.variables[col];
         values.push(tsvSafe(record && variable ? record.cells[variable.name] : ""));
       }
+      // 结果取**屏幕上显示的那句**（含「待填写：x」「错误文案」），保证所见即所复制
+      if (withResult) values.push(tsvSafe(resultCellText(state.evaluations[row]).text));
       lines.push(values.join("\t"));
     }
     return lines.join("\n");
@@ -1081,13 +1087,17 @@ export function init(ctx) {
 
   function copyRange(range, withHeader) {
     if (!range) return;
+    const withResult = state.copyWithResult;
     const rowCount = range.r1 - range.r0 + 1;
-    const colCount = range.c1 - range.c0 + 1;
+    const colCount = range.c1 - range.c0 + 1 + (withResult ? 1 : 0);
     clipboard
-      .copyText(buildTsv(range, withHeader))
+      .copyText(buildTsv(range, withHeader, withResult))
       .then(() => {
         const size = rowCount === 1 && colCount === 1 ? "1 个单元格" : `${rowCount}×${colCount} 个单元格`;
-        setStatus(`已复制 ${size}${withHeader ? "（含表头）" : ""}`, "ok");
+        const extras = [];
+        if (withHeader) extras.push("表头");
+        if (withResult) extras.push("结果列");
+        setStatus(`已复制 ${size}${extras.length ? `（含${extras.join("、")}）` : ""}`, "ok");
       })
       .catch(() => setStatus("复制失败，请用鼠标选中文字复制。", "warn"));
   }
@@ -1097,29 +1107,48 @@ export function init(ctx) {
     return { r0: 0, r1: state.rows.length - 1, c0: 0, c1: state.variables.length - 1 };
   }
 
-  function openTableMenu(x, y) {
+  /**
+   * 变量表菜单（v1.7.38 起由 `copyRange` 之上多一层「选项」）：
+   * 「复制时包含结果列」是**选项**不是动作 —— 勾完菜单不关，接着点上面的复制项即可。
+   * 之所以不把 4 个动作各翻一倍成 8 项：菜单会变成一屏清单，而用户通常只想固定一种口径。
+   */
+  function tableMenuItems() {
     const hasSelection = Boolean(selection);
     const all = fullRange();
+    return [
+      {
+        label: "复制时包含结果列",
+        checked: state.copyWithResult,
+        keepOpen: true,
+        onSelect: () => {
+          state.copyWithResult = !state.copyWithResult;
+          return tableMenuItems();
+        },
+      },
+      { separator: true },
+      {
+        label: "复制选区",
+        shortcut: `${modKey}+C`,
+        disabled: !hasSelection,
+        onSelect: () => copyRange(selection, false),
+      },
+      {
+        label: "复制选区（含表头）",
+        disabled: !hasSelection,
+        onSelect: () => copyRange(selection, true),
+      },
+      { separator: true },
+      { label: "复制整表", disabled: !all, onSelect: () => copyRange(all, false) },
+      { label: "复制整表（含表头）", disabled: !all, onSelect: () => copyRange(all, true) },
+    ];
+  }
+
+  function openTableMenu(x, y) {
     menu.open({
       x,
       y,
       label: "变量表",
-      items: [
-        {
-          label: "复制选区",
-          shortcut: `${modKey}+C`,
-          disabled: !hasSelection,
-          onSelect: () => copyRange(selection, false),
-        },
-        {
-          label: "复制选区（含表头）",
-          disabled: !hasSelection,
-          onSelect: () => copyRange(selection, true),
-        },
-        { separator: true },
-        { label: "复制整表", disabled: !all, onSelect: () => copyRange(all, false) },
-        { label: "复制整表（含表头）", disabled: !all, onSelect: () => copyRange(all, true) },
-      ],
+      items: tableMenuItems(),
     });
   }
 
