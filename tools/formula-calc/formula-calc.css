@@ -97,10 +97,23 @@
   flex: 0 0 auto;
 }
 
+/* 齿轮弹窗必须能伸出面板下缘（v1.7.40）。
+   `.panel` 带 `overflow: hidden`（为了让 panel__head 的底色被圆角裁住），
+   而这块面板比弹窗矮 —— 六个选项约 220px，面板正文只有一行公式 + 一行结果，
+   弹窗一旦从标题下方展开就必然越过面板下缘，被裁掉最后一项「变量取值解析」。
+   这不是高度不够的问题：面板再高，弹窗仍有越界的可能（窄屏 / 放大字号 / 长标题换行）。
+   所以只对这一块面板放开裁切，上圆角改由 panel__head 自己承担 ——
+   原本正是靠父级裁切才圆的，放开后不补会露出两个直角。 */
+.fc-area-calc {
+  overflow: visible;
+}
+
 /* 面板头要压住下方正文，弹窗才能浮在它上面 */
 .fc-area-calc .panel__head {
   position: relative;
   z-index: 3;
+  /* 1px 是 .panel 的边框宽度，内圆角要比外圆角小一圈才对得上 */
+  border-radius: calc(var(--r-md) - 1px) calc(var(--r-md) - 1px) 0 0;
 }
 
 .fc-gear[aria-expanded="true"] {
