@@ -1577,11 +1577,15 @@ const TEMPLATE = `
     <span class="sf-migrate__file mono" data-import-filename>未选择文件</span>
   </div>
   <div class="field">
-    <label class="field__label" for="sf-import-text">
-      <span>或直接粘贴 JSON</span>
-      <span class="field__hint">与「导出 / 复制 JSON」的内容格式一致</span>
-    </label>
+    <!-- v1.7.39：提示搬出 <label>、改用 aria-describedby（§7）。
+         留在 label 内会被并进可访问名称，读屏把「或直接粘贴 JSON 与「导出 / 复制 JSON」的内容格式一致」
+         整串当名字念。 -->
+    <div class="field__label">
+      <label for="sf-import-text">或直接粘贴 JSON</label>
+      <span class="field__hint" id="sf-import-text-hint">与「导出 / 复制 JSON」的内容格式一致</span>
+    </div>
     <textarea class="textarea textarea--compact" id="sf-import-text" spellcheck="false"
+              aria-describedby="sf-import-text-hint"
               placeholder='{"app":"local-toolbox","tool":"sql-format","version":1,"presets":[…] }'></textarea>
   </div>
   <div class="sf-migrate__actions">
@@ -1659,21 +1663,22 @@ const TEMPLATE = `
               <option value="space">空格</option>
               <option value="tab">Tab</option>
             </select>
-            <select class="select" id="sf-indent-width" aria-label="缩进宽度">
+            <select class="select" id="sf-indent-width" aria-label="缩进宽度"
+                    aria-describedby="sf-indent-hint">
               <option value="2">2</option>
               <option value="4">4</option>
               <option value="8">8</option>
             </select>
           </div>
-          <p class="field__hint">选择 Tab 时忽略宽度</p>
+          <p class="field__hint" id="sf-indent-hint">选择 Tab 时忽略宽度</p>
         </div>
 
         <div class="field">
-          <label class="field__label" for="sf-keyword-case">
-            <span>关键字大小写</span>
-            <span class="field__hint">保留字</span>
-          </label>
-          <select class="select" id="sf-keyword-case">
+          <div class="field__label">
+            <label for="sf-keyword-case">关键字大小写</label>
+            <span class="field__hint" id="sf-keyword-case-hint">保留字</span>
+          </div>
+          <select class="select" id="sf-keyword-case" aria-describedby="sf-keyword-case-hint">
             <option value="upper">大写 SELECT</option>
             <option value="lower">小写 select</option>
             <option value="preserve">保持原样</option>
@@ -1681,11 +1686,11 @@ const TEMPLATE = `
         </div>
 
         <div class="field">
-          <label class="field__label" for="sf-function-case">
-            <span>函数名大小写</span>
-            <span class="field__hint">如 count / COUNT</span>
-          </label>
-          <select class="select" id="sf-function-case">
+          <div class="field__label">
+            <label for="sf-function-case">函数名大小写</label>
+            <span class="field__hint" id="sf-function-case-hint">如 count / COUNT</span>
+          </div>
+          <select class="select" id="sf-function-case" aria-describedby="sf-function-case-hint">
             <option value="lower">小写</option>
             <option value="upper">大写</option>
             <option value="preserve">保持原样</option>
@@ -1693,11 +1698,11 @@ const TEMPLATE = `
         </div>
 
         <div class="field">
-          <label class="field__label" for="sf-identifier-case">
-            <span>标识符大小写</span>
-            <span class="field__hint">双引号标识符不改写</span>
-          </label>
-          <select class="select" id="sf-identifier-case">
+          <div class="field__label">
+            <label for="sf-identifier-case">标识符大小写</label>
+            <span class="field__hint" id="sf-identifier-case-hint">双引号标识符不改写</span>
+          </div>
+          <select class="select" id="sf-identifier-case" aria-describedby="sf-identifier-case-hint">
             <option value="preserve">保持原样</option>
             <option value="lower">小写</option>
             <option value="upper">大写</option>
@@ -1706,11 +1711,11 @@ const TEMPLATE = `
 
         <div class="sf-options__group">
           <div class="field">
-            <label class="field__label" for="sf-select-list">
-              <span>选择列表换行</span>
-              <span class="field__hint">SELECT 各列</span>
-            </label>
-            <select class="select" id="sf-select-list">
+            <div class="field__label">
+              <label for="sf-select-list">选择列表换行</label>
+              <span class="field__hint" id="sf-select-list-hint">SELECT 各列</span>
+            </div>
+            <select class="select" id="sf-select-list" aria-describedby="sf-select-list-hint">
               <option value="auto">自动（超出行宽才换行）</option>
               <option value="always">每列一行</option>
               <option value="never">不换行</option>
@@ -1718,11 +1723,11 @@ const TEMPLATE = `
           </div>
 
           <div class="field">
-            <label class="field__label" for="sf-line-width">
-              <span>软性行宽</span>
-              <span class="field__hint">0 表示不限制</span>
-            </label>
-            <select class="select" id="sf-line-width">
+            <div class="field__label">
+              <label for="sf-line-width">软性行宽</label>
+              <span class="field__hint" id="sf-line-width-hint">0 表示不限制</span>
+            </div>
+            <select class="select" id="sf-line-width" aria-describedby="sf-line-width-hint">
               <option value="0">不限制</option>
               <option value="80">80 字符</option>
               <option value="100">100 字符</option>
@@ -1749,22 +1754,22 @@ const TEMPLATE = `
 
         <div class="sf-options__group">
           <div class="field">
-            <label class="field__label" for="sf-comma-position">
-              <span>逗号位置</span>
-              <span class="field__hint">折行时</span>
-            </label>
-            <select class="select" id="sf-comma-position">
+            <div class="field__label">
+              <label for="sf-comma-position">逗号位置</label>
+              <span class="field__hint" id="sf-comma-position-hint">折行时</span>
+            </div>
+            <select class="select" id="sf-comma-position" aria-describedby="sf-comma-position-hint">
               <option value="trailing">行尾 a,</option>
               <option value="leading">行首 , a</option>
             </select>
           </div>
 
           <div class="field">
-            <label class="field__label" for="sf-blank-lines">
-              <span>空行处理</span>
-              <span class="field__hint">原有多余空行</span>
-            </label>
-            <select class="select" id="sf-blank-lines">
+            <div class="field__label">
+              <label for="sf-blank-lines">空行处理</label>
+              <span class="field__hint" id="sf-blank-lines-hint">原有多余空行</span>
+            </div>
+            <select class="select" id="sf-blank-lines" aria-describedby="sf-blank-lines-hint">
               <option value="collapse">压缩为单行</option>
               <option value="preserve">保留</option>
             </select>

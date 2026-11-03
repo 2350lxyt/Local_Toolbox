@@ -430,11 +430,13 @@ const TEMPLATE = `
     <span class="tlm-migrate__file mono" data-import-filename>未选择文件</span>
   </div>
   <div class="field">
-    <label class="field__label" for="tlm-import-text">
-      <span>或直接粘贴 JSON</span>
-      <span class="field__hint">与「导出 / 复制 JSON」的内容格式一致</span>
-    </label>
+    <!-- v1.7.39：提示搬出 <label>、改用 aria-describedby（§7）—— 否则整串提示会被并进可访问名称 -->
+    <div class="field__label">
+      <label for="tlm-import-text">或直接粘贴 JSON</label>
+      <span class="field__hint" id="tlm-import-text-hint">与「导出 / 复制 JSON」的内容格式一致</span>
+    </div>
     <textarea class="textarea textarea--compact" id="tlm-import-text" spellcheck="false"
+              aria-describedby="tlm-import-text-hint"
               placeholder='{"app":"local-toolbox","tool":"text-line-merge","version":1,"presets":[…]}'></textarea>
   </div>
   <div class="tlm-migrate__actions">
@@ -520,30 +522,33 @@ const TEMPLATE = `
       </div>
       <div class="panel__body">
         <div class="field">
-          <label class="field__label" for="tlm-separator">
-            <span>分隔符</span>
-            <span class="field__hint">留空表示直接拼接</span>
-          </label>
-          <input class="input" id="tlm-separator" type="text" autocomplete="off" spellcheck="false" />
-          <p class="field__hint tlm-effect">效果：<code data-effect="separator"></code></p>
+          <div class="field__label">
+            <label for="tlm-separator">分隔符</label>
+            <span class="field__hint" id="tlm-separator-hint">留空表示直接拼接</span>
+          </div>
+          <input class="input" id="tlm-separator" type="text" autocomplete="off" spellcheck="false"
+                 aria-describedby="tlm-separator-hint tlm-separator-effect" />
+          <p class="field__hint tlm-effect" id="tlm-separator-effect">效果：<code data-effect="separator"></code></p>
         </div>
 
         <div class="field">
-          <label class="field__label" for="tlm-prefix">
-            <span>每行前缀</span>
-            <span class="field__hint">加在每行开头</span>
-          </label>
-          <input class="input" id="tlm-prefix" type="text" autocomplete="off" spellcheck="false" />
-          <p class="field__hint tlm-effect">效果：<code data-effect="prefix"></code></p>
+          <div class="field__label">
+            <label for="tlm-prefix">每行前缀</label>
+            <span class="field__hint" id="tlm-prefix-hint">加在每行开头</span>
+          </div>
+          <input class="input" id="tlm-prefix" type="text" autocomplete="off" spellcheck="false"
+                 aria-describedby="tlm-prefix-hint tlm-prefix-effect" />
+          <p class="field__hint tlm-effect" id="tlm-prefix-effect">效果：<code data-effect="prefix"></code></p>
         </div>
 
         <div class="field">
-          <label class="field__label" for="tlm-suffix">
-            <span>每行后缀</span>
-            <span class="field__hint">加在每行结尾</span>
-          </label>
-          <input class="input" id="tlm-suffix" type="text" autocomplete="off" spellcheck="false" />
-          <p class="field__hint tlm-effect">效果：<code data-effect="suffix"></code></p>
+          <div class="field__label">
+            <label for="tlm-suffix">每行后缀</label>
+            <span class="field__hint" id="tlm-suffix-hint">加在每行结尾</span>
+          </div>
+          <input class="input" id="tlm-suffix" type="text" autocomplete="off" spellcheck="false"
+                 aria-describedby="tlm-suffix-hint tlm-suffix-effect" />
+          <p class="field__hint tlm-effect" id="tlm-suffix-effect">效果：<code data-effect="suffix"></code></p>
         </div>
 
         <div class="field">
@@ -567,12 +572,12 @@ const TEMPLATE = `
         </div>
 
         <div class="field tlm-escape-group" data-escape-group>
-          <label class="field__label" for="tlm-escape-char">
-            <span>转义字符</span>
-            <span class="field__hint">默认英文单引号</span>
-          </label>
+          <div class="field__label">
+            <label for="tlm-escape-char">转义字符</label>
+            <span class="field__hint" id="tlm-escape-char-hint">默认英文单引号</span>
+          </div>
           <input class="input" id="tlm-escape-char" type="text" maxlength="4" autocomplete="off"
-                 spellcheck="false" />
+                 spellcheck="false" aria-describedby="tlm-escape-char-hint" />
 
           <label class="field__label" for="tlm-escape-mode">转义方式</label>
           <select class="select" id="tlm-escape-mode">

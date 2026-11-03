@@ -283,10 +283,13 @@ const TEMPLATE = `
     </div>
     <div class="panel__body">
       <div class="field">
-        <label class="field__label" for="__ID__formula">
-          <span>公式</span>
-          <span class="field__hint">变量名只用字母、中文或下划线；紧跟在变量名后的数字算它的取值；Enter 记入历史、Alt+Enter 换行</span>
-        </label>
+        <!-- v1.7.39：提示从 <label> 里搬出来（§7）——
+             留在 label 内会被算进可访问名称，读屏听到的是「公式 变量名只用字母…Enter 记入历史」，
+             一长串全当名字念；搬出去改用 aria-describedby，名称仍是「公式」，提示作为说明在名称之后播报。 -->
+        <div class="field__label">
+          <label for="__ID__formula">公式</label>
+          <span class="field__hint" id="__ID__formula-hint">变量名只用字母、中文或下划线；紧跟在变量名后的数字算它的取值；Enter 记入历史、Alt+Enter 换行</span>
+        </div>
         <div class="fc-formula">
           <div class="fc-formula__box">
             <!-- v1.7.29：叠加层与文本域放进同一个网格单元格 —— 宽度由列宽统一决定，
@@ -301,6 +304,7 @@ const TEMPLATE = `
                 spellcheck="false"
                 autocomplete="off"
                 placeholder="(100+300)*2 或 单价10*数量25*折扣率0.9"
+                aria-describedby="__ID__formula-hint"
                 data-formula
               ></textarea>
             </div>
@@ -407,14 +411,15 @@ const TEMPLATE = `
         <span class="fc-import__file mono" data-import-filename>未选择文件</span>
       </div>
       <div class="field">
-        <label class="field__label" for="__ID__import-text">
-          <span>或直接粘贴 JSON</span>
-          <span class="field__hint">与「导出」的内容格式一致</span>
-        </label>
+        <div class="field__label">
+          <label for="__ID__import-text">或直接粘贴 JSON</label>
+          <span class="field__hint" id="__ID__import-text-hint">与「导出」的内容格式一致</span>
+        </div>
         <textarea
           class="textarea textarea--compact"
           id="__ID__import-text"
           spellcheck="false"
+          aria-describedby="__ID__import-text-hint"
           placeholder='{"app":"local-toolbox","tool":"formula-calc","version":1,"items":[…]}'
           data-import-text
         ></textarea>
@@ -873,7 +878,9 @@ export function init(ctx) {
               `<td class="fc-cell ${hueClass(column)}${invalid ? " is-invalid" : ""}" data-column="${column}" data-grid="${index}:${column}">` +
               `<input class="input" type="text" size="1" spellcheck="false" autocomplete="off" ` +
               `data-cell="${index}:${column}" value="${escapeHtml(raw)}" ` +
-              `aria-label="${escapeHtml(variable.name)} 第 ${index + 1} 行取值" /></td>`
+              `aria-label="${escapeHtml(variable.name)} 第 ${index + 1} 行取值" ` +
+              // v1.7.39：非法态此前只是描边变红，读屏完全不知情 —— 补 aria-invalid（§7）
+              `aria-invalid="${invalid ? "true" : "false"}" /></td>`
             );
           })
           .join("");
@@ -912,6 +919,7 @@ export function init(ctx) {
       const invalid =
         evaluation && evaluation.kind === "invalid" && evaluation.invalid.some((item) => item.name === variable.name);
       holder.classList.toggle("is-invalid", Boolean(invalid));
+      cell.setAttribute("aria-invalid", invalid ? "true" : "false");
     });
   }
 

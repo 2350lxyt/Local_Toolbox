@@ -131,7 +131,8 @@ const TEMPLATE = `
     </div>
     <div class="td-field">
       <label class="td-field__label" for="td-context">上下文行数（折叠相同行）</label>
-      <select class="select" id="td-context" data-role="context"></select>
+      <select class="select" id="td-context" data-role="context"
+              aria-describedby="td-rendered-note"></select>
     </div>
     <div class="td-field">
       <span class="td-field__label">显示</span>
@@ -250,7 +251,7 @@ const TEMPLATE = `
         <div class="td-layer" data-layer="rendered"></div>
       </div>
     </div>
-    <p class="field__hint" data-rendered-note></p>
+    <p class="field__hint" id="td-rendered-note" data-rendered-note></p>
   </div>
 
   <!-- 差异缩略图（§15.13）：装饰性视觉导航，键盘等价路径是 F7 / 上一个下一个差异 -->

@@ -760,18 +760,20 @@ const TEMPLATE = `
       <div class="dc-fields">
         <div class="field">
           <div class="field__label"><label for="dc-span-start">起始日期</label></div>
-          <input class="input" type="date" id="dc-span-start" data-role="span-start" />
+          <input class="input" type="date" id="dc-span-start" data-role="span-start"
+                 aria-describedby="dc-span-note" />
         </div>
         <div class="field">
           <div class="field__label"><label for="dc-span-end">结束日期</label></div>
-          <input class="input" type="date" id="dc-span-end" data-role="span-end" />
+          <input class="input" type="date" id="dc-span-end" data-role="span-end"
+                 aria-describedby="dc-span-note" />
         </div>
       </div>
 
       <div class="dc-fields">
         <div class="field">
           <div class="field__label"><label for="dc-boundary">天数口径</label></div>
-          <select class="select" id="dc-boundary" data-role="boundary">
+          <select class="select" id="dc-boundary" data-role="boundary" aria-describedby="dc-span-note">
             <option value="exclusive">不含首尾</option>
             <option value="inclusive">含首尾</option>
           </select>
@@ -793,7 +795,7 @@ const TEMPLATE = `
         </div>
       </div>
 
-      <p class="field__hint" data-span-note></p>
+      <p class="field__hint" id="dc-span-note" data-span-note></p>
     </div>
     <div class="panel__foot">
       <button class="btn btn--ghost" type="button" data-action="span-today">结束日期＝今天</button>
@@ -873,11 +875,13 @@ const TEMPLATE = `
       <div class="dc-fields">
         <div class="field">
           <div class="field__label"><label for="dc-countdown-date">目标日期</label></div>
-          <input class="input" type="date" id="dc-countdown-date" data-role="countdown-date" />
+          <input class="input" type="date" id="dc-countdown-date" data-role="countdown-date"
+                 aria-describedby="dc-countdown-note" />
         </div>
         <div class="field">
           <div class="field__label"><label for="dc-countdown-boundary">当天口径</label></div>
-          <select class="select" id="dc-countdown-boundary" data-role="countdown-boundary">
+          <select class="select" id="dc-countdown-boundary" data-role="countdown-boundary"
+                  aria-describedby="dc-countdown-note">
             <option value="exclusive">不计入当天</option>
             <option value="inclusive">计入当天（今天算 1 天）</option>
           </select>
@@ -895,7 +899,7 @@ const TEMPLATE = `
         </div>
       </div>
 
-      <p class="field__hint" data-countdown-note></p>
+      <p class="field__hint" id="dc-countdown-note" data-countdown-note></p>
     </div>
     <div class="panel__foot">
       <button class="btn btn--ghost" type="button" data-action="countdown-today">目标日期＝今天</button>
@@ -1053,7 +1057,12 @@ export function init(ctx) {
   // 否则 <label for> 与 aria-labelledby 会解析到第一个实例的节点（§9.3 第 8 条）。
   const uid = `dc-${ctx.instance && ctx.instance.serial ? ctx.instance.serial : 1}`;
 
-  host.innerHTML = TEMPLATE.replace(/(id="|for="|aria-controls="|aria-labelledby=")dc-/g, (match, prefix) => `${prefix}${uid}-`).replace(
+  // v1.7.39：aria-describedby 也必须参与改写 —— 它和 for / aria-labelledby 一样按 id 解析，
+  // 漏掉的话多实例下所有说明都会指向同一个（或不存在的）节点（§7）。
+  host.innerHTML = TEMPLATE.replace(
+    /(id="|for="|aria-controls="|aria-labelledby="|aria-describedby=")dc-/g,
+    (match, prefix) => `${prefix}${uid}-`
+  ).replace(
     /__I_\w+__/g,
     (token) => {
       const entry = ICON_TOKENS[token];
@@ -1233,6 +1242,18 @@ export function init(ctx) {
     if (node) node.textContent = value === null || value === undefined ? "—" : String(value);
   }
 
+  /* v1.7.39：字段的错误态要能被读屏读到（§7）。
+     此前三处取值失败只在提示行写一句话，控件本身没有任何可读标记 ——
+     用户 Tab 回到出错的日期框时，听不出「这格是错的」，也不知道错在哪。
+     提示行本身已用 aria-describedby 挂在这些控件上，配 aria-invalid 才是完整的一对。
+     传节点而不是 id 字符串：本工具的 DOM id 带实例前缀（uid），写死的 id 在多实例下会落空。
+     只改传入的字段：三个页签各管各的，避免一边渲染把另一边的错误态清掉。 */
+  function markInvalid(fields, on) {
+    fields.forEach((node) => {
+      if (node) node.setAttribute("aria-invalid", on ? "true" : "false");
+    });
+  }
+
   function renderSpan() {
     const result = countDays(
       nodes.spanStart.value,
@@ -1249,8 +1270,11 @@ export function init(ctx) {
         result.reason === "range"
           ? `区间跨度超过上限（${MAX_SPAN_YEARS} 年），请缩小范围。`
           : "请选择有效的起始与结束日期。";
+      markInvalid([nodes.spanStart, nodes.spanEnd], true);
       return;
     }
+
+    markInvalid([nodes.spanStart, nodes.spanEnd], false);
 
     setStat(nodes.statNatural, result.total);
     setStat(nodes.statWorkday, result.workdays);
@@ -1298,9 +1322,14 @@ export function init(ctx) {
     if (!result.ok) {
       nodes.shiftResult.textContent = "—";
       nodes.shiftMeta.textContent = result.message;
+      // 唯一能判断出错在哪一格的依据就是基准日期本身是否合法（§7）
+      const baseBad = !isValidISODate(nodes.shiftBase.value);
+      markInvalid([nodes.shiftBase], baseBad);
+      markInvalid([nodes.shiftAmount], !baseBad);
       return;
     }
 
+    markInvalid([nodes.shiftBase, nodes.shiftAmount], false);
     const type = resolveDayType(result.iso, state.overrides);
     nodes.shiftResult.textContent = result.iso;
     nodes.shiftMeta.textContent = `${weekdayLabel(result.iso)} · ${type.label}（依据：${sourceLabel(type.source)}）`;
@@ -1319,8 +1348,11 @@ export function init(ctx) {
       setStat(nodes.countdownNatural, "—");
       setStat(nodes.countdownWorkday, "—");
       nodes.countdownNote.textContent = "请选择有效的目标日期。";
+      markInvalid([nodes.countdownDate], true);
       return;
     }
+
+    markInvalid([nodes.countdownDate], false);
 
     setStat(nodes.countdownNatural, Math.abs(info.natural));
     setStat(nodes.countdownWorkday, Math.abs(info.workdays));
