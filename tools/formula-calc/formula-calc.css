@@ -84,6 +84,14 @@
   color: var(--text-muted);
 }
 
+/* v1.7.41：首行已手改、与公式取值不一致时的「表内 X」提示 ——
+   这是「为什么结果没按公式里的数算」的唯一解释，必须比普通 meta 更醒目一档 */
+.fc-chip__meta--shadow {
+  color: var(--text-strong);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
 .fc-chips__empty {
   font-size: var(--fs-xs);
   color: var(--text-muted);
@@ -377,6 +385,21 @@
 .fc-cell.is-invalid .input {
   border-color: var(--danger);
   box-shadow: 0 0 0 2px var(--danger-soft);
+}
+
+/* 「这一格显示的不是参与计算的数」（v1.7.42，§16.4）：
+   首行内容仍是公式上一次的取值，计算已改用公式当前取值 —— 内容**不写回表**，
+   只用虚下划线 + 弱化文字提示「它与结果无关」，悬停 title 说明两个数各是什么。
+   不改铺底色：底色已由斑马纹 / 选中行 / 选区三种状态占用，再加一层会互相打架。 */
+.fc-cell.is-formula .input {
+  color: var(--text-muted);
+  text-decoration: underline dotted var(--text-muted);
+  text-underline-offset: 2px;
+}
+
+.fc-cell.is-formula .input:focus {
+  color: var(--text-strong);
+  text-decoration-color: var(--accent);
 }
 
 .fc-result {

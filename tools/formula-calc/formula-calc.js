@@ -27,6 +27,7 @@ import {
   evaluateFormula,
   explainSteps,
   formatNumber,
+  isFormulaLeftover,
   normalizeFormula,
   parseCellValue,
   stripEmbeddedValues,
@@ -240,6 +241,7 @@ const ICON_TOKENS = Object.freeze({
   __I_GEAR__: ["settings", 16],
   __I_DOWNLOAD__: ["download", 15],
   __I_PLUS__: ["plus", 15],
+  __I_TO_ROW__: ["arrowRight", 15],
   __I_TRASH__: ["trash", 15],
 __I_SWAP__: ["refresh", 15],
   __I_UPLOAD__: ["upload", 15],
@@ -368,6 +370,12 @@ const TEMPLATE = `
       <div class="fc-toolbar">
         <button class="btn" type="button" data-action="add-row">__I_PLUS__ 增行</button>
         <button class="btn" type="button" data-action="remove-row">__I_TRASH__ 删行</button>
+        <button
+          class="btn btn--ghost"
+          type="button"
+          data-action="values-to-row"
+          title="把公式里提取到的取值原样存成新的一行（既有行不变，新行不会被公式改动）"
+        >__I_TO_ROW__ 取值存新行</button>
         <button class="btn btn--ghost" type="button" data-action="clear-rows">清空取值</button>
       </div>
     </div>
@@ -534,6 +542,7 @@ export function init(ctx) {
     importText: el("[data-import-text]"),
     clearFormula: el('[data-action="clear-formula"]'),
     clearHistory: el('[data-action="clear-history"]'),
+    valuesToRow: el('[data-action="values-to-row"]'),
   };
 
   /** 定时器集合，清理时统一回收 */
@@ -571,12 +580,30 @@ export function init(ctx) {
     /** 当前编辑命中的历史条目 id（用于列表高亮） */
     activeHistoryId: "",
     /**
-     * 自动填值的**记账**（v1.7.14）：变量名 → 上一次由公式预填进第一行的**原样写法**。
-     * 只有当单元格内容仍等于这里的记录（或为空格子）时才认为它「仍然是自动的」，
-     * 从而在公式里的取值变化后同步更新；用户手改过的格会从记账里删除，公式再变也不覆盖它。
-     * **不落盘**（只存在于内存，与「输入不持久化」口径一致）。
+     * 第一行里「内容仍是公式旧取值」的变量名（v1.7.42，§16.4）。
+     * 命中 ⇒ 计算改用公式当前取值、**表格内容一概不写**（变量表归用户所有）。
+     * 记账只在内存、不落盘；刷新 / 恢复历史后由 `prevPrefill` 重新识别（见 `syncRows`）。
      */
-    autoFilled: {},
+    formulaOwned: new Set(),
+    /**
+     * 第一行「计算时按公式取值」的变量 → 取值（v1.7.42）。由 `syncRows` 算出，
+     * `evaluateRow(0)` / 变量表标注 / chips 都从这里取，保证三处同源。
+     * 未命中的变量不在表内 ⇒ 计算按表内取值。**不落盘**。
+     */
+    formulaValues: {},
+    /**
+     * 上一条**成功解析**的公式给出的取值（v1.7.41，`变量名 → prefillRaw`）。
+     * 记账会随刷新 / 挂载 / 恢复历史清空，此时靠它把「格内文本仍是上一条公式的取值」的格子
+     * 重新识别为残留（§16.4「残留识别」）。**不落盘**（与 formulaOwned 同口径）。
+     */
+    prevPrefill: {},
+    /**
+     * 自上次成功解析以来**被用户亲手改过**的变量名（v1.7.41）。
+     * 只用于挡住「残留识别」的误判：用户把格子改成一个恰好等于上一条公式取值的数时，
+     * 不能因为文本相同就判成残留（§16.4 硬性：不得覆盖用户输入）。
+     * 每次成功解析后清空 —— 它描述的是「这一轮编辑」而不是永久状态。
+     */
+    userEdited: new Set(),
     storageWarned: false,
     /** 复制时是否附上「结果」列（v1.7.38）。纯视图偏好，不落盘、不进历史 —— 关掉页面即复位。 */
     copyWithResult: false,
@@ -634,14 +661,25 @@ export function init(ctx) {
   /**
    * 逐行求值。单元格写法的**原样**会通过 `<变量名>::raw` 传给核心，
    * 从而在「变量替换」步骤里显示 `折扣率 = 15%（0.15）`（§16.4 / §16.5）。
+   *
+   * **首行残留格改用公式取值**（v1.7.42）：`state.formulaValues` 命中的变量直接取公式当前取值，
+   * 不再拿表内残留数据算 —— 这是「同一骨架换取值」缺陷的根治点；表内内容保持原样不被改写。
    */
   function evaluateRow(index) {
     const row = state.rows[index];
     const values = {};
     const invalid = [];
+    // 接管只作用于第一行（自动预填的落点）；其余行是用户自己录入的对比数据，原样求值
+    const injected = index === 0 ? state.formulaValues : null;
 
     state.variables.forEach((variable) => {
-      const raw = row.cells[variable.name] === undefined ? "" : String(row.cells[variable.name]);
+      const name = variable.name;
+      const useFormula = Boolean(injected) && Object.prototype.hasOwnProperty.call(injected, name);
+      const raw = useFormula
+        ? String(injected[name])
+        : row.cells[name] === undefined
+          ? ""
+          : String(row.cells[name]);
       const parsed = parseCellValue(raw);
       if (!parsed.ok) {
         invalid.push({ name: variable.name, error: parsed.message || parsed.error });
@@ -675,15 +713,26 @@ export function init(ctx) {
 
   /* ── 变量表数据同步 ───────────────────────────────────── */
 
+  /** 变量名 → 公式给出的原样取值（v1.7.41）：`prevPrefill` 的唯一来源，未给取值的变量不入表 */
+  function prefillMap(variables) {
+    const map = {};
+    (variables || []).forEach((variable) => {
+      if (variable.prefillRaw !== null && variable.prefillRaw !== undefined) map[variable.name] = variable.prefillRaw;
+    });
+    return map;
+  }
+
   /**
    * 变量集合变化时对齐每行的单元格（单元格按**变量名**索引，公式调整顺序不会串值）。
    *
-   * **取值预填跟随公式（v1.7.14，§16.4）**：公式里提取到的取值填进**第一行**，并且当公式里的取值
-   * 发生变化时（例如 `单价10` → `单价10.5`，含小数），**仍处于「自动」状态的单元格会同步更新**。
-   * 原实现「只要格子非空就永不写入」会让 chips 已经显示新取值、表格却还留着旧值 ——
-   * 结果自然按旧值算，看起来就是「公式里的小数没被采用」。
-   * 判定「仍处于自动状态」靠 `state.autoFilled` 记账：内容与记账一致（或为空）才更新；
-   * 用户在单元格里手改过就会从记账里删除，此后公式再变也不覆盖它。
+   * **取值不写回表（v1.7.42，§16.4 硬性）**：变量表是用户数据。公式里的取值只在
+   * **首行空格子**上做一次预填（没有用户内容可保护），此后**任何已有内容都不再被公式改写** ——
+   * 改公式取值不会连带改表，用户想留下这组取值就点「取值存新行」。
+   *
+   * **残留识别**：同一骨架换取值（`单价10*数量25` → `单价12*数量30`）时，表里那格还是老数。
+   * 若该格属于「公式残留」（内容等于上一条公式的取值、且本轮没被手改），就把公式当前取值
+   * 记进 `state.formulaValues`，**由计算层优先采用**，表格显示与内容维持原样并在格上标注。
+   * 这样既不会拿表内残留数据算错（原始缺陷），也不会悄悄改掉用户的表（本轮缺陷）。
    */
   function syncRows() {
     const names = state.variables.map((variable) => variable.name);
@@ -693,31 +742,47 @@ export function init(ctx) {
       });
     });
     // 变量消失后它的记账也失效
-    Object.keys(state.autoFilled).forEach((name) => {
-      if (!names.includes(name)) delete state.autoFilled[name];
+    Array.from(state.formulaOwned).forEach((name) => {
+      if (!names.includes(name)) state.formulaOwned.delete(name);
     });
     if (state.rows.length === 0) state.rows.push({ cells: {} });
     if (state.selectedRow >= state.rows.length) state.selectedRow = state.rows.length - 1;
 
+    state.formulaValues = {};
     if (!state.config.autoFillFromFormula) {
-      // 关掉自动填值即「忘记归属」：现有内容一律视为用户自己的
-      state.autoFilled = {};
+      // 关掉「变量取值解析 / 自动填值」即视为全表都是用户数据：不预填、不接管计算
+      state.formulaOwned = new Set();
       return;
     }
     const first = state.rows[0];
+    const readTrimmed = (holder, name) =>
+      Object.prototype.hasOwnProperty.call(holder, name) ? String(holder[name]).trim() : null;
+
     state.variables.forEach((variable) => {
       const name = variable.name;
       const raw = variable.prefillRaw;
-      if (raw === null || raw === undefined) return; // 公式没给取值：保持原样，不清空也不猜
-      const current = String(first.cells[name] === undefined ? "" : first.cells[name]).trim();
-      const tracked = Object.prototype.hasOwnProperty.call(state.autoFilled, name)
-        ? String(state.autoFilled[name]).trim()
-        : null;
-      // 空格子，或内容仍是上一次自动填入的那个值 → 同步为新取值；用户手改过的格不动
-      if (current === "" || (tracked !== null && current === tracked)) {
-        first.cells[name] = raw;
-        state.autoFilled[name] = raw;
+      if (raw === null || raw === undefined) {
+        // 公式没给取值：既不预填也不接管，表内有什么就用什么
+        state.formulaOwned.delete(name);
+        return;
       }
+      const current = String(first.cells[name] === undefined ? "" : first.cells[name]).trim();
+      if (current === "") {
+        // 唯一的写入时机：空格子（用户尚未提供内容）
+        first.cells[name] = raw;
+        state.formulaOwned.delete(name);
+        return;
+      }
+      // 已判定为残留的格保持判定（公式连续改几次，表里都还是最初那份数）
+      if (!state.formulaOwned.has(name)) {
+        const leftover = isFormulaLeftover({
+          current,
+          previous: readTrimmed(state.prevPrefill, name),
+          edited: state.userEdited.has(name),
+        });
+        if (leftover) state.formulaOwned.add(name);
+      }
+      if (state.formulaOwned.has(name)) state.formulaValues[name] = raw;
     });
   }
 
@@ -802,17 +867,41 @@ export function init(ctx) {
       nodes.chips.innerHTML = `<span class="fc-chips__empty">${escapeHtml(text)}</span>`;
       return;
     }
+    const firstRow = state.rows[0] || { cells: {} };
     nodes.chips.innerHTML = state.variables
       .map((variable, index) => {
-        const value =
-          variable.prefillRaw === null ? "" : `<span class="fc-chip__meta">= ${escapeHtml(variable.prefillRaw)}</span>`;
+        const name = variable.name;
+        const hasPrefill = variable.prefillRaw !== null && variable.prefillRaw !== undefined;
+        const cellRaw = firstRow.cells[name];
+        const cellText = cellRaw === undefined || cellRaw === null ? "" : String(cellRaw).trim();
+        // chip 只报「第 1 行实际按什么算」——由计算层同一个出口给出，杜绝 chip 与结果各说一套（§16.4）
+        const byFormula = Object.prototype.hasOwnProperty.call(state.formulaValues, name);
+        const effective = byFormula ? String(state.formulaValues[name]) : cellText;
+        const value = effective === "" ? "" : `<span class="fc-chip__meta">= ${escapeHtml(effective)}</span>`;
+        // 表内与生效取值不一致时必须说出来，否则「表里 10、结果按 12」无从判断（v1.7.42）
+        let shadow = "";
+        if (byFormula && cellText !== "" && cellText !== effective) {
+          shadow =
+            `<span class="fc-chip__meta fc-chip__meta--shadow" title="表内仍是上一次的取值 ${escapeHtml(
+              cellText
+            )}；计算按公式当前取值 ${escapeHtml(effective)}。要留住这组取值请点「取值存新行」">表内 ${escapeHtml(
+              cellText
+            )}</span>`;
+        } else if (!byFormula && hasPrefill && cellText !== "" && cellText !== String(variable.prefillRaw).trim()) {
+          shadow =
+            `<span class="fc-chip__meta fc-chip__meta--shadow" title="该格已手改为 ${escapeHtml(
+              cellText
+            )}，计算以表内取值为准（公式里写的是 ${escapeHtml(String(variable.prefillRaw))}）">公式 ${escapeHtml(
+              String(variable.prefillRaw)
+            )}</span>`;
+        }
         const count = variable.count > 1 ? `<span class="fc-chip__meta">出现 ${variable.count} 次</span>` : "";
         // 真实按钮：点按即定位到该变量所在列（§16.4 v1.7.4），键盘 Enter / Space 同样可用
         return (
           `<button class="fc-chip ${hueClass(index)}" type="button" data-locate="${index}" ` +
           `title="定位到「${escapeHtml(variable.name)}」列" ` +
           `aria-label="定位到变量 ${escapeHtml(variable.name)} 所在列">` +
-          `<span class="fc-chip__name">${escapeHtml(variable.name)}</span>${value}${count}</button>`
+          `<span class="fc-chip__name">${escapeHtml(variable.name)}</span>${value}${shadow}${count}</button>`
         );
       })
       .join("");
@@ -838,7 +927,20 @@ export function init(ctx) {
     return { text: "", tone: "is-pending" };
   }
 
+  /** 「取值存新行」按钮的可用态（v1.7.41）：公式里一个取值都没有、或解析失败时禁用并说明原因 */
+  function renderTableTools() {
+    if (!nodes.valuesToRow) return;
+    const hasValues = Boolean(
+      state.analysis && state.variables.some((variable) => variable.prefillRaw !== null && variable.prefillRaw !== undefined)
+    );
+    nodes.valuesToRow.disabled = !hasValues;
+    nodes.valuesToRow.title = hasValues
+      ? "把公式里提取到的取值原样存成新的一行（既有行不变，新行不会被公式改动）"
+      : "当前公式里没有被提取到的取值（写成「单价10」这样才带取值），没有可存的内容";
+  }
+
   function renderTable() {
+    renderTableTools();
     const hasVariables = state.variables.length > 0;
     nodes.tableScroll.hidden = !hasVariables;
     nodes.tableEmpty.hidden = hasVariables;
@@ -874,11 +976,21 @@ export function init(ctx) {
             const raw = row.cells[variable.name] === undefined ? "" : String(row.cells[variable.name]);
             const invalid =
               evaluation && evaluation.kind === "invalid" && evaluation.invalid.some((item) => item.name === variable.name);
+            // 该格计算时改用公式取值（表内是上一次的残留）：标注出来，否则「显示 10、结果按 12」
+            // 会被当成算错了（v1.7.42，§16.4）
+            const byFormula = index === 0 && Object.prototype.hasOwnProperty.call(state.formulaValues, variable.name);
+            const formulaRaw = byFormula ? String(state.formulaValues[variable.name]) : "";
+            const hint = byFormula
+              ? ` title="表内 ${raw}；公式当前取值 ${formulaRaw}，计算按公式取值（点「取值存新行」可留下这组取值）"`
+              : "";
+            const ariaNote = byFormula ? `（计算按公式取值 ${formulaRaw}）` : "";
             return (
-              `<td class="fc-cell ${hueClass(column)}${invalid ? " is-invalid" : ""}" data-column="${column}" data-grid="${index}:${column}">` +
+              `<td class="fc-cell ${hueClass(column)}${invalid ? " is-invalid" : ""}${
+                byFormula ? " is-formula" : ""
+              }" data-column="${column}" data-grid="${index}:${column}">` +
               `<input class="input" type="text" size="1" spellcheck="false" autocomplete="off" ` +
-              `data-cell="${index}:${column}" value="${escapeHtml(raw)}" ` +
-              `aria-label="${escapeHtml(variable.name)} 第 ${index + 1} 行取值" ` +
+              `data-cell="${index}:${column}" value="${escapeHtml(raw)}"${hint} ` +
+              `aria-label="${escapeHtml(variable.name)} 第 ${index + 1} 行取值${escapeHtml(ariaNote)}" ` +
               // v1.7.39：非法态此前只是描边变红，读屏完全不知情 —— 补 aria-invalid（§7）
               `aria-invalid="${invalid ? "true" : "false"}" /></td>`
             );
@@ -920,6 +1032,17 @@ export function init(ctx) {
         evaluation && evaluation.kind === "invalid" && evaluation.invalid.some((item) => item.name === variable.name);
       holder.classList.toggle("is-invalid", Boolean(invalid));
       cell.setAttribute("aria-invalid", invalid ? "true" : "false");
+      // v1.7.42：首行「按公式取值」的标注跟着内容走 —— 用户手改后即刻退出接管
+      const byFormula = index === 0 && Object.prototype.hasOwnProperty.call(state.formulaValues, variable.name);
+      holder.classList.toggle("is-formula", byFormula);
+      if (byFormula) {
+        const formulaRaw = String(state.formulaValues[variable.name]);
+        cell.title = `表内 ${cell.value}；公式当前取值 ${formulaRaw}，计算按公式取值（点「取值存新行」可留下这组取值）`;
+        cell.setAttribute("aria-label", `${variable.name} 第 ${index + 1} 行取值（计算按公式取值 ${formulaRaw}）`);
+      } else {
+        cell.removeAttribute("title");
+        cell.setAttribute("aria-label", `${variable.name} 第 ${index + 1} 行取值`);
+      }
     });
   }
 
@@ -991,7 +1114,7 @@ export function init(ctx) {
     const frame = nodes.rangeFrame;
     const scroller = nodes.tableScroll;
     if (!frame || !scroller) return;
-    if (!selection || scroller.hidden) {
+    if (!selection || scroller.hidden || !gridHasFocus()) {
       frame.hidden = true;
       return;
     }
@@ -1015,10 +1138,25 @@ export function init(ctx) {
     frame.style.height = `${b.bottom - a.top}px`;
   }
 
+  /**
+   * 表格当前是否处于「有格子在编辑」的状态（v1.7.43，§16.14）。
+   * 选区是**编辑态**的视觉：焦点一旦离开数据格（点公式框、切工具、点按钮），就不该继续挂着灰底与强调框 ——
+   * 否则看起来像「这一格被选中了」，而实际上敲键盘改的是别处。
+   * 拖选期间（`dragStart` 非空）焦点还没落到格子上（`pointerdown` 里 preventDefault 过），
+   * 必须算作编辑态，否则拖动过程一个字都不显示。
+   */
+  function gridHasFocus() {
+    if (dragStart) return true;
+    const active = document.activeElement;
+    if (!active || typeof active.closest !== "function") return false;
+    return Boolean(active.closest("[data-cell]")) && nodes.tableBody.contains(active);
+  }
+
   function paintSelection() {
-    const active = activeCell();
+    const visible = gridHasFocus();
+    const active = visible ? activeCell() : null;
     nodes.tableBody.querySelectorAll("td[data-grid]").forEach((td) => {
-      if (!selection) {
+      if (!selection || !visible) {
         td.classList.remove("is-range", "is-active");
         return;
       }
@@ -1029,6 +1167,14 @@ export function init(ctx) {
     });
     paintRangeFrame();
   }
+
+  /* 焦点进出：进格 → 画选区；离格 → 等焦点真正落定后擦掉（focusout 触发时 activeElement 还是旧元素） */
+  bind(nodes.tableBody, "focusin", () => paintSelection());
+  bind(nodes.tableBody, "focusout", (event) => {
+    const next = event.relatedTarget;
+    if (next instanceof Node && nodes.tableBody.contains(next)) return; // 只是从一格移到另一格
+    window.requestAnimationFrame(paintSelection);
+  });
 
   /* 列宽会随面板宽度变化（分栏拖动 / 侧栏收起 / 窗口缩放）—— 外框得跟着重算，
      否则选区一跨列就会停在旧位置上。观察整张表比监听 window.resize 更准（只认真的变宽变窄）。 */
@@ -1248,6 +1394,48 @@ export function init(ctx) {
     event.preventDefault();
     input.focus();
     input.select();
+  });
+
+  /**
+   * Tab / Shift+Tab = 移到**下一格 / 上一格**（v1.7.43，§16.14 Excel 习惯）。
+   *
+   * 原生的 Tab 顺序按 DOM 走，而每行最左边是「行号」按钮 ⇒ 在最后一格按 Tab 会先落进行号列，
+   * 得再按一次才到下一行第一格。这里把「格内 Tab」直接改成按网格行走：
+   * 行内右移，行末折到下一行首格；反向同理。到表格边界（首格 Shift+Tab / 末格 Tab）**不拦**，
+   * 交回浏览器离开表格 —— 不能把焦点困在表里。
+   * 行号按钮仍保留在 Tab 序列中（键盘用户从这里进入表格时能听到行号），只是格内 Tab 不再经过它。
+   */
+  bind(nodes.tableBody, "keydown", (event) => {
+    if (event.key !== "Tab" || event.ctrlKey || event.metaKey || event.altKey) return;
+    const input = event.target instanceof Element ? event.target.closest("[data-cell]") : null;
+    if (!input) return;
+    const rows = state.rows.length;
+    const cols = state.variables.length;
+    if (rows === 0 || cols === 0) return;
+    const [row, col] = input.dataset.cell.split(":").map(Number);
+    if (!Number.isInteger(row) || !Number.isInteger(col)) return;
+
+    let next = null;
+    if (event.shiftKey) {
+      if (col > 0) next = { row, col: col - 1 };
+      else if (row > 0) next = { row: row - 1, col: cols - 1 };
+    } else if (col < cols - 1) {
+      next = { row, col: col + 1 };
+    } else if (row < rows - 1) {
+      next = { row: row + 1, col: 0 };
+    }
+    if (!next) return; // 边界：让浏览器把焦点带出表格
+
+    event.preventDefault();
+    const target = nodes.tableBody.querySelector(`[data-cell="${next.row}:${next.col}"]`);
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    // 视口是固定高度内部滚动：只滚到「刚好可见」，不把整页顶走（老浏览器无此 API 时静默跳过）
+    if (typeof target.scrollIntoView === "function") target.scrollIntoView({ block: "nearest", inline: "nearest" });
+    // 与 Excel 一致：焦点落进新格即选中原文本，直接打字就是替换
+    target.select();
+    // 选区跟着光标走，否则框选后按 Tab 再复制，复制到的还是旧范围（§16.14）
+    setSelection(normalizeRange(next, next), next);
   });
 
   // 点列头选中整列（Excel 习惯）；不改变选中行
@@ -1528,10 +1716,13 @@ export function init(ctx) {
 
     const key = normalizeFormula(state.formula).replace(/\s+/g, "");
     // 快照保存**整张变量表**（不是只看选中行）：恢复时公式与每一行取值一起回来（§16.7）
-    const rows = state.rows.map((row) => {
+    // v1.7.42：首行若按公式取值计算（表内是残留老数），落账时将其替换为**实际采用的取值** ——
+    // 否则恢复后结果会跟着表格内容退回老数，与记录时看到的数字自相矛盾
+    const rows = state.rows.map((row, index) => {
       const cells = {};
       state.variables.forEach((variable) => {
-        const raw = row.cells[variable.name];
+        const injected = index === 0 && Object.prototype.hasOwnProperty.call(state.formulaValues, variable.name);
+        const raw = injected ? state.formulaValues[variable.name] : row.cells[variable.name];
         cells[variable.name] = raw === undefined ? "" : String(raw);
       });
       return cells;
@@ -1590,6 +1781,10 @@ export function init(ctx) {
       state.analysis = analysis;
       state.variables = analysis.variables;
       syncRows();
+      // 仅在成功解析后更新「上一条公式的取值」快照：公式写错时保留上一次的，避免识别链断在半句上
+      state.prevPrefill = prefillMap(analysis.variables);
+      // 「这一轮手改」到此结账：它只用来挡住本次归属恢复，不该长期生效
+      state.userEdited.clear();
       clearError();
       evaluateAll();
       renderAll();
@@ -1603,7 +1798,8 @@ export function init(ctx) {
       state.variables = [];
       state.rows = [{ cells: {} }];
       state.selectedRow = 0;
-      state.autoFilled = {}; // 连带清掉自动填值的记账（表格已归零）
+      state.formulaOwned = new Set(); // 表格已归零，残留判定与接管一并失效
+      state.formulaValues = {};
     } else {
       showError(analysis.error);
     }
@@ -1688,13 +1884,69 @@ export function init(ctx) {
     setStatus(`已新增第 ${state.rows.length} 行`, "ok");
   }
 
+  /**
+   * 把当前公式提取到的取值**原样存成新的一行**（v1.7.41，§16.4「取值存新行」）。
+   *
+   * 这是「公式取值不写回表」口径下的唯一落地方式（v1.7.42）：改公式取值时表内数据保持不动，
+   * 想让这组新取值进表参与后续对比，就把它落成一行独立数据，既有行原样保留。
+   * 新行是**快照** —— 不写进 `formulaOwned`，公式取值之后再变也不回写它。
+   */
+  function storeValuesAsRow() {
+    if (!state.analysis || state.variables.length === 0) {
+      setStatus("先写下能解析的含变量公式，再存取值。", "warn");
+      return;
+    }
+    const filled = state.variables.filter(
+      (variable) => variable.prefillRaw !== null && variable.prefillRaw !== undefined
+    );
+    if (filled.length === 0) {
+      setStatus("当前公式里没有可提取的取值（例如只写了变量名），没有可存的内容。", "warn");
+      return;
+    }
+    if (state.rows.length >= MAX_ROWS) {
+      setStatus(`数据行数已达上限 ${MAX_ROWS} 行，无法再存为新行。`, "warn");
+      return;
+    }
+
+    const cells = {};
+    filled.forEach((variable) => {
+      cells[variable.name] = variable.prefillRaw;
+    });
+    // 一行一个签名：按变量顺序取原件文本，用于「已经有同样一行」的判定（防连点灌满整表）
+    const signature = (row) =>
+      state.variables
+        .map((variable) => String(row.cells[variable.name] === undefined ? "" : row.cells[variable.name]).trim())
+        .join("\u0001");
+    const target = signature({ cells });
+    const existing = state.rows.findIndex((row) => signature(row) === target);
+    if (existing >= 0) {
+      state.selectedRow = existing;
+      renderAll();
+      setStatus(`第 ${existing + 1} 行已经是这组取值，未重复新增（改公式里的取值后再点即可存出新的一行）。`, "info");
+      return;
+    }
+
+    state.rows.push({ cells });
+    state.selectedRow = state.rows.length - 1;
+    evaluateAll();
+    renderAll();
+    const blank = state.variables.length - filled.length;
+    setStatus(
+      `已把公式取值存为第 ${state.rows.length} 行` + (blank > 0 ? `（另有 ${blank} 个变量未给取值，留空待填）` : ""),
+      "ok"
+    );
+  }
+
   function removeRow() {
     if (state.rows.length <= 1) {
       setStatus("至少保留一行数据。", "warn");
       return;
     }
-    // 预填的目标行就是第一行：它被删掉后「自动状态」的记账随之失效（v1.7.14）
-    if (state.selectedRow === 0) state.autoFilled = {};
+    // 预填与残留判定都以第一行为落点：它被删掉后记账随之失效（v1.7.42）
+    if (state.selectedRow === 0) {
+      state.formulaOwned = new Set();
+      state.formulaValues = {};
+    }
     state.rows.splice(state.selectedRow, 1);
     state.selectedRow = Math.max(0, Math.min(state.selectedRow, state.rows.length - 1));
     evaluateAll();
@@ -1710,7 +1962,9 @@ export function init(ctx) {
       return;
     }
     state.rows = state.rows.map(() => ({ cells: {} }));
-    state.autoFilled = {}; // 全线清空后重新开始记账（下一轮重算会按公式重新预填）
+    state.formulaOwned = new Set(); // 取值已清空，残留判定与接管一并失效
+    state.formulaValues = {};
+    state.userEdited.clear(); // 格子已空，此前的「手改」不再代表任何内容
     evaluateAll();
     renderAll();
     setStatus(`已清空 ${state.rows.length} 行的取值`, "warn");
@@ -1744,7 +1998,8 @@ export function init(ctx) {
     nodes.formula.value = "";
     state.rows = [{ cells: {} }];
     state.selectedRow = 0;
-    state.autoFilled = {};
+    state.formulaOwned = new Set();
+    state.formulaValues = {};
     recompute({ record: false });
     setStatus("已清空公式与变量表", "warn");
     nodes.formula.focus();
@@ -1797,8 +2052,14 @@ export function init(ctx) {
     if (!item) return;
     backfillCurrentEdit();
     nodes.formula.value = item.formula;
-    // 恢复出来的取值是**用户当时的数据**，不再属于「自动填值」→ 清掉记账，公式再变也不覆盖（v1.7.14）
-    state.autoFilled = {};
+    // 恢复出来的取值是**用户当时的数据**，旧的残留记账（指向恢复前的格子）随之失效（v1.7.42）
+    state.formulaOwned = new Set();
+    state.formulaValues = {};
+    state.userEdited.clear();
+    // 但残留判定不能就此失明 —— 先按**条目自己的公式**播种快照，重算时
+    // 「格内文本 == 该公式取值」的格子会被识别为残留，同一骨架换取值后不会再拿老数算（§16.4）。
+    const restored = analyzeFormula(item.formula, parseOptions());
+    state.prevPrefill = restored.ok ? prefillMap(restored.variables) : {};
     // 恢复**整张变量表**与当时选中的行（§16.7）
     state.rows = item.rows.length > 0 ? item.rows.map((cells) => ({ cells: { ...cells } })) : [{ cells: {} }];
     state.selectedRow = Math.max(0, Math.min(item.selectedRow, state.rows.length - 1));
@@ -2072,12 +2333,19 @@ export function init(ctx) {
     const variable = state.variables[column];
     if (!variable || !state.rows[rowIndex]) return;
     state.rows[rowIndex].cells[variable.name] = input.value;
-    // 第一行是自动填值的落点：用户一旦手改，该格就归用户所有 —— 从记账里删除，
-    // 此后公式里的取值再变也不会覆盖它（v1.7.14，§16.4）
-    if (rowIndex === 0) delete state.autoFilled[variable.name];
+    // 第一行是公式取值的预填落点：用户一旦手改，该格立刻归用户所有 ——
+    // 退出「公式残留」记账，此后公式取值再变也不接管它的计算（v1.7.42，§16.4）；
+    // 同时记进 userEdited，避免「手改后的值恰好等于上一条公式取值」被重新判成残留
+    if (rowIndex === 0) {
+      state.formulaOwned.delete(variable.name);
+      delete state.formulaValues[variable.name];
+      state.userEdited.add(variable.name);
+    }
     // 每行互相独立：只重算被编辑的这一行，立即刷新它的结果与非法态
     state.evaluations[rowIndex] = evaluateRow(rowIndex);
     refreshRow(rowIndex);
+    // chips 报的是「首行实际按什么算」，首行被改就必须同步（否则 chip 与结果各说一套）
+    if (rowIndex === 0) renderChips();
     // 顶部结果行（含「复制」可用状态）与分步都属于**选中行**，编辑它时必须一并刷新（v1.7.14）
     if (rowIndex === state.selectedRow) {
       renderResult();
@@ -2132,6 +2400,7 @@ export function init(ctx) {
   });
   bind(host.querySelector('[data-action="add-row"]'), "click", addRow);
   bind(host.querySelector('[data-action="remove-row"]'), "click", removeRow);
+  bind(host.querySelector('[data-action="values-to-row"]'), "click", storeValuesAsRow);
   bind(host.querySelector('[data-action="clear-rows"]'), "click", clearRows);
 
   bind(nodes.history, "click", (event) => {

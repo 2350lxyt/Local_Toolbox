@@ -648,6 +648,28 @@ export function extractVariables(input, options = {}) {
 }
 
 /**
+ * 表内这一格是否只是「上一条公式取值」的**残留**（v1.7.42，§16.4「残留识别」）。
+ *
+ * 纯函数，只回答一个判定问题，供 UI 的 `syncRows()` 使用（可脱离 DOM 在 Node 中断言）。
+ * **只做识别、不做写入** —— 命中时由计算层改用公式取值，表格内容保持不动。
+ * 判定：
+ *   ① 空格 → 不是残留（空格子本就要预填，不属于「用户已有数据」）；
+ *   ② 本轮被手改过 → 不是残留（手改后的值恰好等于旧取值也可能，不能当残留吞掉）；
+ *   ③ 内容等于**上一条公式给出的取值** → 是残留（同一骨架换了取值，表里还是老数）。
+ * `current` / `previous` 均按 `trim()` 后的文本比较。
+ *
+ * @param {{ current?: string, previous?: string|null, edited?: boolean }} input
+ * @returns {boolean}
+ */
+export function isFormulaLeftover({ current = "", previous = null, edited = false } = {}) {
+  const text = String(current ?? "").trim();
+  if (text === "") return false;
+  if (edited) return false;
+  if (previous === null || previous === undefined) return false;
+  return text === String(previous).trim();
+}
+
+/**
  * 去取值的「变量形式」公式纯文本（v1.7.25，§16.8）。
  * `基准价295+调价-7.38` → `基准价 + 调价`：供 UI「替换输入公式」按钮把输入直接还原为变量式
  * （与展示层 `formulaSegments` 同口径：变量名 + 运算符，二元运算符两侧留一个空格）。
@@ -1133,6 +1155,7 @@ export default Object.freeze({
   parseFormula,
   analyzeFormula,
   extractVariables,
+  isFormulaLeftover,
   evaluateFormula,
   explainSteps,
   annotateFormula,
