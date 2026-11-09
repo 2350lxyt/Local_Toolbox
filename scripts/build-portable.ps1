@@ -10,6 +10,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $stage = Join-Path $root "packaging\csharp\web"
 $zip = Join-Path $root "packaging\csharp\web.zip"
 $source = Join-Path $root "packaging\csharp\Server.cs"
+$icon = Join-Path $root "packaging\icon\toolbox.ico"
 $outDir = Join-Path $root "dist"
 $outExe = Join-Path $outDir "toolbox.exe"
 
@@ -33,9 +34,16 @@ foreach ($lib in @("System.IO.Compression.dll", "System.IO.Compression.FileSyste
         throw "缺少引用程序集 $lib（需要 .NET Framework 4.5+）。"
     }
 }
+# 应用图标（§4.C）：源文件入库；缺失说明是干净检出，就地生成一次
+if (-not (Test-Path $icon)) {
+    Write-Host "      未找到 packaging\icon\toolbox.ico，先运行 scripts\make-icon.ps1 生成"
+    & (Join-Path $PSScriptRoot "make-icon.ps1")
+    if (-not (Test-Path $icon)) { throw "图标生成失败：$icon" }
+}
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 & $csc /nologo /codepage:65001 /target:winexe /optimize+ `
     /out:$outExe `
+    "/win32icon:$icon" `
     "/res:$zip" `
     /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll `
     $source

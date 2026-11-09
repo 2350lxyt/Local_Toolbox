@@ -487,7 +487,9 @@ CloudBase 根路径部署与 GitHub Pages 子路径（`/仓库名/`）部署，
 
 1. 在有 .NET Framework 4.5+ 的 Windows 机器上执行：
    `powershell -File scripts\build-portable.ps1`（用系统自带 csc.exe 编译，**无需安装任何工具链**）；
-2. 产物 `dist\toolbox.exe`（约 250 KB，内嵌整份站点）——拷到 U 盘任意位置双击即可：
+   构建时把 `packaging\icon\toolbox.ico` 绑进 exe（图标随仓库提供；缺失会先调用 `scripts\make-icon.ps1` 生成，
+   改图形后单独跑一次该脚本、重跑构建即可）；
+2. 产物 `dist\toolbox.exe`（约 300 KB，内嵌整份站点，**自带应用图标**）——拷到 U 盘任意位置双击即可：
    固定端口 `5183` 起本机只读分发器，并自动以 **`--app` 独立窗口**打开（无地址栏，观感即桌面应用）；
    再次双击不会重复起服务（单实例复用，`/__healthz` 探测）。**关闭窗口后进程常驻后台**（二次打开
    秒级复用，不写自启、重启电脑即消失），彻底退出用任务管理器结束 `toolbox.exe`
