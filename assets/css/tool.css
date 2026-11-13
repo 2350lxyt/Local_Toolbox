@@ -231,6 +231,12 @@ body[data-tool] .workspace {
   font-size: var(--fs-sm);
   color: var(--text-body);
   cursor: pointer;
+  /* v1.7.46：悬停提亮——复选行是整块命中区，给「这行能点」一个即时反馈 */
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.checkbox:hover {
+  color: var(--text-strong);
 }
 
 .checkbox input {

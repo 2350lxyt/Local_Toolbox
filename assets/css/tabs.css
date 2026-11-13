@@ -408,6 +408,14 @@ body[data-mode="tabs"] .workspace {
 
 /* --------------------------------------------------------------- 面板 */
 
+/* v1.7.46：工具面板**首次挂载**播放一次 rise 淡入（§6「一次性入场」）。
+   .is-enter 由 tabs.js 在挂载完成时添加、animationend 后移除——
+   之后切换标签只走 [hidden] 显隐（§4.4 保活），动画不会重播。
+   复用 shell.css 里定义的同名 @keyframes rise（全局作用域，跨文件可见）。 */
+.tabpanel.is-enter {
+  animation: rise var(--dur-slow) var(--ease-out);
+}
+
 .tabpanel {
   padding: var(--sp-6) clamp(var(--sp-4), 2.5vw, var(--sp-8)) var(--sp-16);
 }
@@ -429,6 +437,16 @@ body[data-mode="tabs"] .workspace {
 }
 
 /* ------------------------------------------------------------ 投放区 */
+
+/* v1.7.46：拖拽开始时浮现一次淡入（display:none → flex 自动触发一次性 animation） */
+@keyframes dropzone-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
 
 .dropzone {
   position: absolute;
@@ -454,6 +472,7 @@ body[data-mode="tabs"] .workspace {
 body[data-dragging="on"] .dropzone {
   display: flex;
   pointer-events: auto;
+  animation: dropzone-in var(--dur-fast) var(--ease-out);
 }
 
 .dropzone.is-over {
@@ -474,6 +493,19 @@ body[data-dragging="on"] .dropzone {
 
 /* ------------------------------------------------------------ 轻提示 */
 
+/* v1.7.46：出现时一次性淡入（§6「一次性入场」）。[hidden] 用 display 切换，
+   hidden=false 的那一帧 animation 自动播放一次；reduced-motion 由 base.css 全局兜底。 */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 .tabs-toast {
   position: absolute;
   right: var(--sp-4);
@@ -488,6 +520,7 @@ body[data-dragging="on"] .dropzone {
   border-left: 3px solid var(--accent);
   border-radius: var(--r-md);
   box-shadow: var(--shadow-2);
+  animation: toast-in var(--dur-base) var(--ease-out);
 }
 
 .tabs-toast[hidden] {

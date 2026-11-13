@@ -677,6 +677,15 @@ export function createTabsWorkspace(options = {}) {
       }
       panel.cleanup = typeof cleanup === "function" ? cleanup : null;
       panel.mounted = true;
+      // v1.7.46：首次挂载播一次 rise 淡入（§6「一次性入场」）。
+      // animationend 后摘除类：此后切换标签只走 [hidden] 显隐，动画不重播（§4.4 保活不受影响）。
+      // reduced-motion 下 base.css 把动画时长压到 0.01ms，animationend 立即触发，等效无动画。
+      panel.el.classList.add("is-enter");
+      panel.el.addEventListener(
+        "animationend",
+        () => panel.el.classList.remove("is-enter"),
+        { once: true }
+      );
     } catch (error) {
       console.error(`[toolbox] 工具「${record.toolId}」实例「${record.name}」加载失败：`, error);
       panel.mounted = true; // 不再重试，避免反复报错
