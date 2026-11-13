@@ -1,7 +1,7 @@
 /* ==========================================================================
    设计令牌 (Design Tokens)
    美学方向：工业实用主义 / 暖灰纸感 / 焦橙强调 / 发丝描边
-   所有令牌均通过 CSS 自定义属性实现，明暗双主题共用同一套语义变量。
+   所有令牌均通过 CSS 自定义属性实现，全部主题（§3.7 主题矩阵）共用同一套语义变量。
    ========================================================================== */
 
 :root {
@@ -191,6 +191,134 @@
     0 28px 64px -28px rgba(0, 0, 0, 0.9);
 
   --grid-line: rgba(245, 242, 234, 0.055);
+}
+
+/* ==========================================================================
+   柔和深色 dark-dimmed（v1.7.47 · §3.7）
+   深色整体提明度一档、对比收敛：夜间长时间使用更舒适。
+   结构与 dark 完全同构，只动颜色令牌；焦橙降饱和降明（#d97e33），不换色相。
+   ========================================================================== */
+:root[data-theme="dark-dimmed"] {
+  color-scheme: dark;
+
+  --bg-base: #1c1a18;
+  --bg-surface: #242120;
+  --bg-inset: #332f2b;
+  --bg-sunken: #141312;
+  --bg-hover: rgba(245, 242, 234, 0.07);
+  --bg-active: rgba(217, 126, 51, 0.15);
+  --bg-scrim: rgba(0, 0, 0, 0.5);
+
+  --text-strong: #ece8df;
+  --text-body: #c6bfb2;
+  --text-muted: #a49d90;
+  --text-faint: #8f887c;
+  --text-invert: #1c1a18;
+
+  --hairline: #3b3630;
+  --hairline-strong: #4b453f;
+
+  --accent: #d97e33;
+  --accent-hover: #e9974f;
+  --accent-soft: rgba(217, 126, 51, 0.13);
+  --accent-ring: rgba(217, 126, 51, 0.36);
+  --accent-contrast: #17150f;
+
+  --ok: #63b491;
+  --ok-soft: rgba(99, 180, 145, 0.13);
+  --warn: #d3a455;
+  --warn-soft: rgba(211, 164, 85, 0.13);
+  --danger: #de8579;
+  --danger-soft: rgba(222, 133, 121, 0.13);
+  --info: #7fb2dd;
+  --info-soft: rgba(127, 178, 221, 0.13);
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -16px rgba(0, 0, 0, 0.65);
+  --shadow-3: 0 2px 6px rgba(0, 0, 0, 0.45),
+    0 28px 64px -28px rgba(0, 0, 0, 0.75);
+
+  --grid-line: rgba(245, 242, 234, 0.045);
+}
+
+/* ==========================================================================
+   高对比浅色 light-contrast（v1.7.47 · §3.7）
+   取值与 v1.7.27 `prefers-contrast: more` 同源：文字加深一档、发丝线加实。
+   焦橙取 brand-700 保正文级对比；色相不变。
+   ========================================================================== */
+:root[data-theme="light-contrast"] {
+  color-scheme: light;
+
+  --bg-hover: rgba(23, 21, 15, 0.09);
+  --bg-active: #f7d9c8;
+
+  --text-strong: #0f0e0b;
+  --text-body: #3d3830;
+  --text-muted: #454034;
+  --text-faint: #6e6757;
+
+  --hairline: #b3ab9b;
+  --hairline-strong: #8f8674;
+
+  --accent: #9a3412;
+  --accent-hover: #7f2c0e;
+  --accent-soft: #f8d9c6;
+  --accent-ring: rgba(154, 52, 18, 0.55);
+  --accent-contrast: #ffffff;
+
+  --ok: #1e5c40;
+  --warn: #7d3c05;
+  --danger: #8f1c12;
+  --info: #15446f;
+
+  --grid-line: rgba(23, 21, 15, 0.09);
+}
+
+/* ==========================================================================
+   高对比深色 dark-contrast（v1.7.47 · §3.7）
+   背景更沉、文字与发丝线整体提亮一档；焦橙提亮为 #ff8a3d 保非文本 3:1。
+   ========================================================================== */
+:root[data-theme="dark-contrast"] {
+  color-scheme: dark;
+
+  --bg-base: #0d0c0b;
+  --bg-surface: #151312;
+  --bg-inset: #26221e;
+  --bg-sunken: #0a0908;
+  --bg-hover: rgba(245, 242, 234, 0.1);
+  --bg-active: rgba(255, 138, 61, 0.2);
+  --bg-scrim: rgba(0, 0, 0, 0.7);
+
+  --text-strong: #ffffff;
+  --text-body: #ece8df;
+  --text-muted: #d6cfc2;
+  --text-faint: #b3ab9b;
+  --text-invert: #17150f;
+
+  --hairline: #55504a;
+  --hairline-strong: #6f6960;
+
+  --accent: #ff8a3d;
+  --accent-hover: #ffa263;
+  --accent-soft: rgba(255, 138, 61, 0.16);
+  --accent-ring: rgba(255, 138, 61, 0.6);
+  --accent-contrast: #17150f;
+
+  --ok: #7cc9a4;
+  --ok-soft: rgba(124, 201, 164, 0.16);
+  --warn: #ecb160;
+  --warn-soft: rgba(236, 177, 96, 0.16);
+  --danger: #f0897a;
+  --danger-soft: rgba(240, 137, 122, 0.16);
+  --info: #93bfef;
+  --info-soft: rgba(147, 191, 239, 0.16);
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.6);
+  --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.6), 0 12px 32px -16px rgba(0, 0, 0, 0.9);
+  --shadow-3: 0 2px 6px rgba(0, 0, 0, 0.65),
+    0 28px 64px -28px rgba(0, 0, 0, 1);
+
+  --grid-line: rgba(245, 242, 234, 0.075);
 }
 
 /* ---------- 用户偏好：更高对比度（v1.7.27） ---------- */

@@ -24,10 +24,14 @@ import * as menu from "./utils/menu.js";
 import {
   THEME_LABEL,
   THEME_ICON,
-  cycleThemePref,
+  THEME_PREFS,
+  THEME_VARIANTS,
+  VARIANT_LABEL,
   getThemePref,
+  getThemeVariant,
+  setThemePref,
+  setThemeVariant,
   initTheme,
-  nextThemePref,
 } from "./theme.js";
 
 /* ------------------------------------------------------------------ 路径 */
@@ -122,7 +126,7 @@ const SHELL_TEMPLATE = `
       <nav class="crumbs" aria-label="当前位置" data-crumbs></nav>
       <div class="topbar__spacer"></div>
       <div class="topbar__actions">
-        <button class="icon-btn" type="button" data-action="cycle-theme">{{THEME_ICON}}</button>
+        <button class="icon-btn" type="button" data-action="open-theme-menu" aria-haspopup="true" aria-expanded="false" aria-controls="theme-menu">{{THEME_ICON}}</button>
       </div>
     </header>
   </div>
@@ -218,8 +222,11 @@ function renderToolGrid() {
     const status = STATUS_LABEL[tool.status] || STATUS_LABEL.planned;
     const planned = tool.status !== "ready";
     const seq = String(index + 1).padStart(2, "0");
+    // v1.7.46：卡片逐张错落入场（§6「一次性入场」）：复用 .rise 与 --d，
+    // 120ms 起步、每张 +40ms，全部在数百毫秒内播完，只播一次、不构成循环噪音
+    const delay = 120 + index * 40;
     return (
-      `<li class="tool-card${planned ? " is-planned" : ""}">` +
+      `<li class="tool-card rise${planned ? " is-planned" : ""}" style="--d: ${delay}ms">` +
       `<a class="tool-card__link" href="${dom.escapeHtml(toSiteUrl(tool.path))}" ` +
       `data-tool="${dom.escapeHtml(tool.id)}">` +
       `<span class="tool-card__top">` +
@@ -352,22 +359,126 @@ function setupNavTooltip() {
   return hide;
 }
 
-/* ----------------------------------------------------------- 主题交互 */
+/* ----------------------------------------------------------- 主题菜单 */
 
-function setupThemeButton() {
-  const button = dom.qs('[data-action="cycle-theme"]');
+/**
+ * 顶栏主题下拉面板（v1.7.47 · §3.7 / §6 组件表）。
+ * 模式三态（跟随系统/浅色/深色）× 色彩变体（标准/柔和/高对比）两组分段选择。
+ * 面板是 body 级 fixed 浮层：顶栏有 `overflow: hidden` 几何硬化（§4.1），
+ * 挂在顶栏内会被裁剪，与侧栏悬停浮层同一处理方式。
+ */
+function setupThemeMenu() {
+  const button = dom.qs('[data-action="open-theme-menu"]');
   if (!button) return () => {};
 
+  const segMarkup = (attr, values, labels) =>
+    `<div class="theme-menu__seg" data-theme-seg="${attr}">` +
+    values
+      .map(
+        (value) =>
+          `<button type="button" class="theme-menu__opt" data-${attr}="${value}">${labels[value]}</button>`
+      )
+      .join("") +
+    `</div>`;
+
+  const panel = dom.el("div", {
+    className: "theme-menu",
+    attrs: { id: "theme-menu", role: "group", "aria-label": "主题设置", hidden: true },
+  });
+  panel.innerHTML =
+    `<p class="theme-menu__caption meta-label">外观模式</p>` +
+    segMarkup("pref", THEME_PREFS, THEME_LABEL) +
+    `<p class="theme-menu__caption meta-label">色彩变体</p>` +
+    segMarkup("variant", THEME_VARIANTS, VARIANT_LABEL) +
+    `<p class="theme-menu__hint">「柔和」仅作用于深色模式。</p>`;
+  document.body.appendChild(panel);
+
+  let openState = false;
+
+  /** 依据当前双维偏好同步按钮图标与面板高亮 */
   const sync = () => {
     const pref = getThemePref();
+    const variant = getThemeVariant();
     button.innerHTML = icon(THEME_ICON[pref] || "monitor", 18);
-    const label = `主题：${THEME_LABEL[pref]}（点击切换为${THEME_LABEL[nextThemePref(pref)]}）`;
+    const label = `主题设置（当前：${THEME_LABEL[pref]} · ${VARIANT_LABEL[variant]}）`;
     button.setAttribute("aria-label", label);
     button.title = label;
+    dom.qsa(".theme-menu__opt", panel).forEach((opt) => {
+      const isActive =
+        (opt.dataset.pref && opt.dataset.pref === pref) ||
+        (opt.dataset.variant && opt.dataset.variant === variant);
+      opt.classList.toggle("is-active", Boolean(isActive));
+      if (isActive) opt.setAttribute("aria-pressed", "true");
+      else opt.removeAttribute("aria-pressed");
+    });
   };
 
+  const place = () => {
+    const rect = button.getBoundingClientRect();
+    const width = panel.offsetWidth;
+    // 右缘对齐按钮，超出视口左界时夹回（右缘贴近视口右界，与按钮位置一致）
+    const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
+    panel.style.left = `${Math.round(left)}px`;
+    panel.style.top = `${Math.round(rect.bottom + 8)}px`;
+  };
+
+  const onDocPointerDown = (event) => {
+    if (!(event.target instanceof Element)) return;
+    if (panel.contains(event.target) || button.contains(event.target)) return;
+    closeMenu();
+  };
+
+  const onDocKeydown = (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeMenu({ restoreFocus: true });
+    }
+  };
+
+  function closeMenu(options = {}) {
+    if (!openState) return;
+    openState = false;
+    panel.hidden = true;
+    panel.classList.remove("is-open");
+    button.setAttribute("aria-expanded", "false");
+    document.removeEventListener("pointerdown", onDocPointerDown, true);
+    document.removeEventListener("keydown", onDocKeydown, true);
+    window.removeEventListener("resize", closeMenu);
+    if (options.restoreFocus && document.contains(button)) {
+      try {
+        button.focus();
+      } catch (error) {
+        /* 目标已不可聚焦，忽略 */
+      }
+    }
+  }
+
+  function openMenu() {
+    openState = true;
+    panel.hidden = false;
+    place();
+    button.setAttribute("aria-expanded", "true");
+    // 先显示再下一帧加类，保证淡入过渡每次都播放（§6：一次性淡入）
+    requestAnimationFrame(() => panel.classList.add("is-open"));
+    document.addEventListener("pointerdown", onDocPointerDown, true);
+    document.addEventListener("keydown", onDocKeydown, true);
+    window.addEventListener("resize", closeMenu);
+    const first = dom.qs(".theme-menu__opt.is-active", panel) || dom.qs(".theme-menu__opt", panel);
+    if (first) first.focus();
+  }
+
   dom.on(button, "click", () => {
-    cycleThemePref();
+    if (openState) closeMenu();
+    else openMenu();
+  });
+
+  dom.on(panel, "click", (event) => {
+    const opt = event.target instanceof Element ? event.target.closest(".theme-menu__opt") : null;
+    if (!opt) return;
+    if (opt.dataset.pref) setThemePref(opt.dataset.pref);
+    if (opt.dataset.variant) setThemeVariant(opt.dataset.variant);
+    // 设置类选择不关面板：用户需要看到主题即时变化再决定下一步
     sync();
   });
 
@@ -541,7 +652,7 @@ function bootstrap() {
 
   const sidebar = setupSidebar({ onLayoutChange: requestLayoutSignal });
   setupNavTooltip();
-  setupThemeButton();
+  setupThemeMenu();
 
   // 独立页模式（tools/<id>/index.html）：保留「单工具整页」的既有行为
   if (standaloneToolId) {

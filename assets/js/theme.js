@@ -1,7 +1,12 @@
 /**
  * 主题管理
  * ------------------------------------------------------------------
- * 三态偏好：system（跟随系统）/ light（浅色）/ dark（深色）。
+ * 双维偏好（v1.7.47 · §3.7 主题矩阵）：
+ *   模式维 toolbox:theme       —— system（跟随系统）/ light / dark
+ *   变体维 toolbox:theme-variant —— standard / dimmed / contrast
+ * 两维解析出 5 个具体主题之一（light / dark / dark-dimmed / light-contrast /
+ * dark-contrast）写入 data-theme；变体偏好另写入 data-theme-variant。
+ * 「柔和」只作用于深色系：light + dimmed 回退 light。
  * 偏好持久化在 localStorage，读取失败时安全回退，绝不抛错阻断渲染。
  *
  * 首屏防闪烁由 theme-boot.js（<head> 中的同步脚本）负责，
@@ -9,12 +14,20 @@
  */
 
 export const THEME_KEY = "toolbox:theme";
+export const VARIANT_KEY = "toolbox:theme-variant";
 export const THEME_PREFS = ["system", "light", "dark"];
+export const THEME_VARIANTS = ["standard", "dimmed", "contrast"];
 
 export const THEME_LABEL = Object.freeze({
   system: "跟随系统",
   light: "浅色",
   dark: "深色",
+});
+
+export const VARIANT_LABEL = Object.freeze({
+  standard: "标准",
+  dimmed: "柔和",
+  contrast: "高对比",
 });
 
 export const THEME_ICON = Object.freeze({
@@ -54,43 +67,54 @@ export function systemTheme() {
   }
 }
 
-/** 读取用户偏好（可能是 system） */
+/** 读取模式偏好（可能是 system） */
 export function getThemePref() {
   const value = read(THEME_KEY, "system");
   return THEME_PREFS.includes(value) ? value : "system";
 }
 
-/** 将偏好解析为最终生效的主题 */
+/** 读取变体偏好 */
+export function getThemeVariant() {
+  const value = read(VARIANT_KEY, "standard");
+  return THEME_VARIANTS.includes(value) ? value : "standard";
+}
+
+/**
+ * 双维解析为具体主题 id（§3.7）。
+ * light + dimmed 回退 light（「柔和」只作用于深色系）。
+ */
+export function resolveThemeId(pref = getThemePref(), variant = getThemeVariant()) {
+  const mode = pref === "system" ? systemTheme() : pref;
+  if (variant === "contrast") return `${mode}-contrast`;
+  if (variant === "dimmed" && mode === "dark") return "dark-dimmed";
+  return mode;
+}
+
+/** 将模式偏好解析为浅色 / 深色（不含变体） */
 export function resolveTheme(pref = getThemePref()) {
   return pref === "system" ? systemTheme() : pref;
 }
 
-/** 应用偏好到文档根节点 */
-export function applyTheme(pref = getThemePref()) {
-  const resolved = resolveTheme(pref);
-  root.dataset.theme = resolved;
+/** 应用双维偏好到文档根节点 */
+export function applyTheme(pref = getThemePref(), variant = getThemeVariant()) {
+  root.dataset.theme = resolveThemeId(pref, variant);
   root.dataset.themePref = pref;
-  return resolved;
+  root.dataset.themeVariant = variant;
+  return root.dataset.theme;
 }
 
-/** 写入偏好并立即生效 */
+/** 写入模式偏好并立即生效 */
 export function setThemePref(pref) {
   const next = THEME_PREFS.includes(pref) ? pref : "system";
   write(THEME_KEY, next);
-  return applyTheme(next);
+  return applyTheme(next, getThemeVariant());
 }
 
-/** 下一个偏好（循环顺序：跟随系统 → 浅色 → 深色 → 跟随系统）。按钮文案也用它，避免顺序两处定义。 */
-export function nextThemePref(pref = getThemePref()) {
-  const index = THEME_PREFS.indexOf(pref);
-  return THEME_PREFS[(index + 1) % THEME_PREFS.length];
-}
-
-/** 按 跟随系统 → 浅色 → 深色 → 跟随系统 的顺序循环 */
-export function cycleThemePref() {
-  const next = nextThemePref();
-  setThemePref(next);
-  return next;
+/** 写入变体偏好并立即生效 */
+export function setThemeVariant(variant) {
+  const next = THEME_VARIANTS.includes(variant) ? variant : "standard";
+  write(VARIANT_KEY, next);
+  return applyTheme(getThemePref(), next);
 }
 
 /**
@@ -102,7 +126,7 @@ export function initTheme() {
 
   let media = null;
   const onSystemChange = () => {
-    if (getThemePref() === "system") applyTheme("system");
+    if (getThemePref() === "system") applyTheme("system", getThemeVariant());
   };
 
   try {

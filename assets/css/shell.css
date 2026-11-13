@@ -27,6 +27,16 @@
     background-color var(--dur-base) var(--ease-out);
 }
 
+/* v1.7.46：深色下侧栏取更沉一档（--bg-sunken），与内容底形成「容器壁」分区；
+   浅色版侧栏更亮（--bg-surface 白）——两版各取与内容底相反方向的一档，分区感等价。
+   v1.7.47：规则扩展到全部深色系主题（§3.7）。侧栏内文字（--text-* 系）
+   在更暗的底上对比度只升不降，无 §7 风险。 */
+:root[data-theme="dark"] .sidebar,
+:root[data-theme="dark-dimmed"] .sidebar,
+:root[data-theme="dark-contrast"] .sidebar {
+  background: var(--bg-sunken);
+}
+
 .sidebar__head {
   padding: var(--sp-4) var(--sp-3);
   border-bottom: 1px solid var(--hairline);
@@ -441,12 +451,56 @@
 .hero__title em {
   font-style: normal;
   color: var(--accent);
+  /* v1.7.46：工程标注式强调——焦橙软底画在字块下缘，扩大的是「标记」不是色块面积 */
+  box-shadow: inset 0 -0.26em 0 var(--accent-soft);
 }
 
 .hero__lead {
   max-width: 68ch;
   margin-top: var(--sp-3);
   color: var(--text-body);
+}
+
+/* v1.7.46：首页图纸装饰（§3.1 品牌记忆点③）。
+   绝对定位、不参与 hero 高度计算（首屏几何与改造前一致）；>1080px 才显示。
+   纯装饰（aria-hidden），线稿走 hairline-strong、箭头单笔走 accent、标注走 --text-muted。 */
+.hero__draft {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  display: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  width: 176px;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+@media (min-width: 1081px) {
+  .hero__draft {
+    display: flex;
+  }
+}
+
+.hero__draft-art {
+  width: 160px;
+  height: 160px;
+  color: var(--hairline-strong);
+}
+
+.hero__draft-art path {
+  stroke: currentColor;
+}
+
+.hero__draft-art .hero__draft-accent {
+  stroke: var(--accent);
+}
+
+.hero__draft-note {
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
 }
 
 /* 章节标题 */
@@ -524,6 +578,13 @@
   color: var(--accent);
   background: var(--accent-soft);
   border-radius: var(--r-sm);
+  /* v1.7.46：悬停浮现发丝描边环（box-shadow 不占布局，卡片几何不变） */
+  box-shadow: 0 0 0 1px transparent;
+  transition: box-shadow var(--dur-base) var(--ease-out);
+}
+
+.tool-card__link:hover .tool-card__icon {
+  box-shadow: 0 0 0 1px var(--hairline-strong);
 }
 
 .tool-card__icon .icon {
@@ -709,4 +770,79 @@
     width: 34px;
     height: 34px;
   }
+}
+
+/* ------------------------------------------------------------ 主题菜单 (v1.7.47 · §3.7 / §6) */
+/* body 级 fixed 浮层：顶栏 overflow:hidden 几何硬化（§4.1）会裁剪内挂浮层，
+   与侧栏悬停浮层同一处理方式。定位由 shell.js 依据按钮 rect 计算。 */
+
+.theme-menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 216px;
+  padding: var(--sp-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.theme-menu.is-open {
+  opacity: 1;
+  transform: none;
+}
+
+.theme-menu__caption {
+  margin: var(--sp-1) 0 var(--sp-2);
+}
+
+.theme-menu__caption + .theme-menu__seg {
+  margin-bottom: var(--sp-2);
+}
+
+.theme-menu__seg {
+  display: flex;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  background: var(--bg-inset);
+  border-radius: var(--r-sm);
+}
+
+.theme-menu__opt {
+  flex: 1 1 0;
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--text-body);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.theme-menu__opt:hover {
+  color: var(--text-strong);
+  background: var(--bg-hover);
+}
+
+.theme-menu__opt.is-active {
+  color: var(--text-strong);
+  background: var(--bg-surface);
+  border-color: var(--hairline-strong);
+  box-shadow: var(--shadow-1);
+}
+
+.theme-menu__opt:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-ring);
+}
+
+.theme-menu__hint {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
 }

@@ -47,6 +47,26 @@
               来回切换互不干扰；参数可保存为预设以便复用。
             </p>
           </div>
+          <!-- v1.7.46：图纸装饰（§3.1 品牌记忆点③）——纯装饰、aria-hidden，≤1080px 隐藏 -->
+          <div class="hero__draft" aria-hidden="true">
+            <svg class="hero__draft-art" viewBox="0 0 24 24" fill="none" stroke-width=".55" stroke-linecap="round" stroke-linejoin="round">
+              <!-- 放大版品牌线稿：三线汇入 -->
+              <path d="M3 6h6" />
+              <path d="M3 12h6" />
+              <path d="M3 18h6" />
+              <path d="M10 6c3.5 0 3.5 6 7 6" />
+              <path d="M10 18c3.5 0 3.5-6 7-6" />
+              <!-- 图纸定位角标 -->
+              <path d="M1 4V1h3" />
+              <path d="M20 1h3v3" />
+              <path d="M23 20v3h-3" />
+              <path d="M4 23H1v-3" />
+              <!-- 单笔焦橙：汇出箭头 -->
+              <path class="hero__draft-accent" d="M17 12h4" />
+              <path class="hero__draft-accent" d="M18.5 9.5 21 12l-2.5 2.5" />
+            </svg>
+            <p class="hero__draft-note mono">FIG.01 — ALL LOCAL / NO SERVER</p>
+          </div>
         </section>
 
         <div class="section-head rise" style="--d: 60ms">
@@ -59,7 +79,7 @@
           </p>
         </div>
 
-        <ul class="tool-grid rise" style="--d: 120ms" data-tool-grid></ul>
+        <ul class="tool-grid" data-tool-grid></ul>
 
         <footer class="site-foot rise" style="--d: 180ms" data-site-footer></footer>
       </div>
