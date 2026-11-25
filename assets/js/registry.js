@@ -95,6 +95,18 @@ export const TOOLS = [
     status: "ready",
     keywords: ["公式", "计算", "计算器", "变量", "表达式", "分步", "历史"],
   },
+  {
+    id: "md-view",
+    name: "MD 预览",
+    icon: "eye",
+    description:
+      "把 Markdown 文本渲染成排版后的页面：标题、代码块（语法高亮 + 一键复制）、表格、列表一目了然，支持一键粘贴渲染。",
+    path: "tools/md-view/index.html",
+    entry: "tools/md-view/md-view.js",
+    styles: ["tools/md-view/md-view.css"],
+    status: "ready",
+    keywords: ["markdown", "md", "渲染", "预览", "阅读", "聊天记录", "语法高亮"],
+  },
 ];
 
 /** 按 id 查找工具记录 */

@@ -130,6 +130,11 @@ const PATHS = {
     '<rect width="16" height="20" x="4" y="2" rx="2"/><path d="M8 6h8"/><path d="M16 14v4"/>' +
     '<path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/>' +
     '<path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/>',
+
+  /* MD 预览：眼睛 = 预览 / 查看 */
+  eye:
+    '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/>' +
+    '<circle cx="12" cy="12" r="3"/>',
 };
 
 /**

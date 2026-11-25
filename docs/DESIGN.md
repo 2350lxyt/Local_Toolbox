@@ -4,9 +4,22 @@
 > 后续任何功能调整都必须先比对本文档；若确需改变既定设计，**必须先更新本文档并写明变更理由**，再改动代码。
 > 提交信息的正文中请引用相关章节（例如 `refs docs/DESIGN.md §10.3`）。
 
-- 文档版本：1.7.47
-- 最近更新：2026-11-13
+- 文档版本：1.8.0
+- 最近更新：2026-11-25
 - 对应代码版本：v0.1.0
+
+> **v1.8.0 变更摘要（B 级 · 新增工具：《MD 预览》`md-view`）**：
+> 目标：为聊天工具输出的 Markdown 纯文本提供解析渲染，解决其原样显示不渲染的问题；渲染为主、保留基础编辑。
+> ① **新增第 7 个工具**（§17 全节、§2.3 目录树、§8.1 键表、附录 B 常量）：上下分离布局（编辑区在上可折叠、
+> 渲染区为主角，**任何宽度不并排**），分隔条可拖调比例；一键粘贴渲染（`Ctrl/Cmd+Shift+V`）先读剪贴板
+> 成功后才覆盖并渲染，随后**自动收起编辑区并滚动到渲染区**；渲染核心 `md-core.js` 为纯函数模块（永不抛错）。
+> ② **代码块阅读体验对齐常规 Markdown 阅读器**：围栏代码块带头部栏（语言标签 + 复制原始文本）与语法高亮。
+> 依 §9.6 把原 `tools/text-diff/highlight.js` **上移至共享层** `assets/js/utils/highlight.js`（11 种语言、
+> 无 DOM 无副作用），《文本对比》仅改 import 路径，行为零变化；单块 > 20000 字符不着色降级。
+> ③ **安全口径**：先转义后包白名单标签；链接 href 仅 http/https/mailto/# 白名单；图片语法渲染为占位 chip
+> **不创建 `<img>`**（守住 R2 零网络请求）；HTML 语法默认按字面文本显示。
+> ④ 新存储键 `toolbox:md-view:config[:<序号>]` 与会话草稿键（§8.1）；新增 `icons.js` `eye` 图标键。
+> 受影响章节：§2.3 / §8.1 / §9.6 / §17（新增）/ 附录 A / 附录 B。
 
 > **v1.7.47 变更摘要（B 级 · 主题体系：三模式 × 三变体 = 5 套主题 + 下拉选择面板）**：
 > 目标：把「明暗双主题」升级为受控的主题矩阵（参考 GitHub Primer 的变体思路），同时**不触碰红线、不新增第二强调色、
@@ -967,11 +980,12 @@
 │   └── <附加纯函数模块>.js             纯数据 / 纯函数模块（可选，v1.5.0；无 DOM、无副作用，见 §9.6）
 │   ▸ 现有工具：text-line-merge（《文本行合并》§10）、sql-format（《SQL 格式化》§13）、
 │     date-calc（《日期天数计算器》§14，附加模块 `cn-holidays.js`）、
-│     text-diff（《文本对比》§15，附加模块 `diff-core.js` + `highlight.js`）
+│     text-diff（《文本对比》§15，附加模块 `diff-core.js`）、
+│     md-view（《MD 预览》§17，附加模块 `md-core.js`）
 ├── assets/
 │   ├── css/  tokens.css base.css shell.css tool.css tabs.css
 │   ├── js/   registry.js shell.js tabs.js theme.js theme-boot.js icons.js
-│   │         tool-redirect.js  utils/{dom,clipboard,text}.js
+│   │         tool-redirect.js  utils/{dom,clipboard,text,draft,menu,highlight}.js
 │   └── noscript.html
 ├── docs/DESIGN.md                      本文档
 ├── .gitignore  .nojekyll  package.json  README.md
@@ -1547,6 +1561,9 @@ toolbox:<全局键>              跨工具/外壳数据
 | `toolbox:text-diff:split` | 工具 | 《文本对比》两栏**分隔比例**（跨实例共享的纯视图偏好，不含任何输入内容） | `{ version: 1, ratio: 0.5 }` |
 | `toolbox:formula-calc:history` | 工具 | 《公式计算器》历史记录（**跨实例共享**；本项目**唯一**允许持久化用户输入的键，R5 例外，边界见 §16.7） | `{ version: 1, items: [{ id, formula, variables, rows: [{ 变量名: 原始写法 }], selectedRow, createdAt, updatedAt }] }` |
 | `toolbox:formula-calc:config` | 工具 | 《公式计算器》的**全部选项**（历史记录 / 分步展示 / 从公式自动填值），**不含任何输入内容** | `{ config }`（字段见 §16.2） |
+| `toolbox:md-view:config` | 工具 | 《MD 预览》的**全部选项**（视图模式 / 实时渲染 / 语法高亮 / 自动识别语言 / 自动链接 / 允许原始 HTML），**不含任何输入内容**（字段见 §17.6） | `{ config }` |
+| `toolbox:md-view:config:<serial>` | 工具 | 《MD 预览》第 2 个及以后实例的选项（实例级配置键规范，见下） | `{ config }` |
+| `toolbox:md-view:session-draft[:<serial>]:<slot>` | 工具 | 《MD 预览》会话级草稿（slot 为 `input`；**默认写、关窗即弃**，见上模式化键说明） | `string` |
 
 > `toolbox:tabs` 只允许记录「布局与名称」，任何工具输入（粘贴文本、SQL 正文等）都不得写入其中（R5、§8.3）。
 > 读取时必须逐项校验：过滤未注册 / `status !== 'ready'` / 缺少 `entry` 的实例、重复实例 id 去重、栏数收敛为 2、
@@ -2479,7 +2496,9 @@ export function instanceSessionKey(instance);
 ## 15. 《文本对比》功能规格
 
 > 工具 id：`text-diff`；页面 `tools/text-diff/`；模块 v1.0.0；状态 `ready`。
-> 附加纯函数模块：`tools/text-diff/diff-core.js`（差分算法）与 `tools/text-diff/highlight.js`（代码高亮），见 §9.6。
+> 附加纯函数模块：`tools/text-diff/diff-core.js`（差分算法），见 §9.6。
+> 代码高亮 `highlight.js` 自 v1.8.0 起上移为共享能力层 `assets/js/utils/highlight.js`
+> （《MD 预览》§17 复用，见 §9.6「跨工具可复用能力必须上移共享层」），接口与行为不变。
 
 ### 15.1 定位与布局例外
 
@@ -2799,7 +2818,7 @@ export function foldRows(rows, context, expandedKeys);     // → [{ type:'rows'
 export function findMatches(text, query, options);         // → [{ line, start, end }]
 export function detectLanguage(text, languages);            // 自动识别（返回语言 id）
 
-/* highlight.js */
+/* assets/js/utils/highlight.js（共享能力层，v1.8.0 起） */
 export const LANGUAGES;                                     // 语言注册表（id → 配置）
 export const LANGUAGE_LIST;                                 // [{ id, label }]，供选择框渲染
 export function tokenizeLine(line, languageId);             // → [{ text, type }]
@@ -3442,6 +3461,112 @@ export function isFormulaLeftover({ current, previous, edited })  // -> boolean�
 
 ---
 
+## 17. 《MD 预览》功能规格
+
+> 工具 id：`md-view`；页面 `tools/md-view/`；状态 `ready`（v1.8.0 新增）。
+> 附加纯函数模块：`tools/md-view/md-core.js`（Markdown 解析与安全渲染，§9.6），Node 可直接 import 验证
+> （自带自测脚本 `tools/md-view/_selftest.mjs`）。
+> 代码高亮复用共享能力层 `assets/js/utils/highlight.js`（§9.4；v1.8.0 起自《文本对比》上移，接口不变）。
+
+### 17.1 定位与红线符合性
+
+- **定位**：把聊天工具输出的 Markdown 纯文本渲染成排版后的页面（渲染为主、保留基础编辑），
+  解决原始符号（`#`、```、`|` 等）直接阅读可读性差的问题。
+- 全部解析渲染在浏览器本地完成：零后端（R1）、**零网络请求（R2）**、零第三方库（R3）、零构建（R4）。
+- **R2 特别约定**：图片语法 `![alt](url)` 渲染为「图片占位 chip + 复制链接按钮」，**不创建 `<img>`、
+  不发起任何加载**；链接 `<a>` 仅在用户点击时导航，属用户主动行为。
+- 输入文本默认不落盘（R5）：仅会话级草稿（sessionStorage，默认写、关窗即弃）；**不提供**「本地草稿」开关。
+
+### 17.2 命名与入口
+
+显示名「MD 预览」，图标 `eye`。`registry.js` 登记：`styles: ["tools/md-view/md-view.css"]`（页面 `<head>` 同步链接）。
+
+### 17.3 布局（上下分离，永不并排）
+
+```
+工具条：[粘贴并渲染] [立即渲染] ····· 视图[上下分离|仅预览] [⚙ 选项]
+选项条（按需展开）：实时渲染 / 语法高亮 / 自动识别语言 / 自动链接 / 允许原始 HTML
+├ 编辑区（上，默认约 32% 高；页脚：清空 · 字符/行数 · 提示）
+├ 分隔条（可拖拽 / ↑↓ 微调；比例仅会话内保留）
+└ 渲染区（下，占满剩余空间，独立滚动；页脚：块数 · warnings）
+```
+
+- **任何宽度都不提供左右分栏**（需求红线）。
+- **渲染区是主角**：编辑区最小 120px、渲染区最小 200px；「仅预览」模式下编辑区折叠为
+  窄横条（首行摘要 + 「展开编辑」，编辑能力不丢失）。
+
+### 17.4 核心交互
+
+| 操作 | 行为 |
+| --- | --- |
+| **一键粘贴渲染**（按钮 / `Ctrl+Shift+V`） | **先读剪贴板、成功后才覆盖编辑区**并立即同步渲染（绕过防抖）；随后**自动收起编辑区（切「仅预览」）并滚动到渲染区顶部**，直接呈现结果；读取失败（权限 / 空）→ 内联提示，编辑区内容不动 |
+| 实时渲染 | 输入后 180ms 防抖渲染（关闭「实时渲染」后仅手动触发） |
+| `Ctrl/Cmd + Enter` | 立即渲染（手动模式下是唯一触发方式） |
+| `Ctrl + Alt + C` | 折叠 / 展开编辑区（刻意避开 `Ctrl+Shift+C` —— 那是浏览器 DevTools 快捷键） |
+| 代码块「复制」 | 复制该块**原始文本**（非高亮 HTML）；按钮内联变「已复制」2 秒；原始文本按块索引存实例内存，**不写 DOM 属性、不落盘**；预览容器上事件委托单监听 |
+| 图片 chip「复制链接」 | 复制该图片 URL，同样交互 |
+
+快捷键均带 §9.3 第 2 条焦点守卫（焦点不在本面板内不响应）。
+
+### 17.5 渲染策略与安全（md-core.js）
+
+- **先转义、后包装**：原文片段先 `escapeHtml` 再包白名单标签；**从不把原文直接注入 innerHTML**。
+- 白名单标签：`h1–h6 p br hr strong em b i u s del ins code pre blockquote ul ol li
+  table thead tbody tr th td span a div sup sub small kbd mark`。
+- 链接 `href` 白名单：`http:` / `https:` / `mailto:` / `#` 锚点；其余（含 `javascript:`、`data:`）
+  **整体降级为纯文本**（`mv-deadlink` 样式）。统一 `target="_blank" rel="noopener noreferrer"`。
+- **允许原始 HTML（默认关）**：开启后也仅放行白名单标签，`a` 只留安全 href、`td/th` 只留
+  `colspan`/`rowspan`（1–1000），其余属性剥除；非白名单标签转义为纯文本。
+- **语法支持**：标题、段落、粗体 / 斜体 / 删除线、行内代码、围栏代码块（**语法高亮 + 一键复制**）、
+  有序 / 无序 / 任务列表（嵌套）、引用块（嵌套）、表格（对齐语法）、分隔线、链接、图片占位、
+  自动链接（可关）、反斜杠转义。**不支持**：脚注、数学公式、Mermaid、HTML 块级透传（除上条外）。
+- **代码高亮**：围栏语言经别名表映射到共享分词器（`js→javascript`、`py→python`、`sh/bash→shell`、
+  `yml→yaml`、`html→xml`、`md→markdown` 等）；未标注时按块首部 `detectLanguage` 自动识别（可关）；
+  不支持的语言回落纯文本。着色 span（`mv-tok-*`，与《文本对比》`td-tok-*` 同源语义）只包**已转义**文本。
+- 参数常量（附录 B 已登记口径）：防抖 180ms；超长阈值 300000 字符（暂停实时渲染，提示手动刷新）；
+  单代码块着色上限 20000 字符；嵌套深度上限 16（超出拍平 + warnings）。
+
+### 17.6 参数模型（R7）
+
+| 选项 | 默认 | 说明 |
+| --- | --- | --- |
+| 视图模式 | 上下分离 | 上下分离 / 仅预览（一键粘贴渲染会自动切「仅预览」） |
+| 实时渲染 | 开启 | 关闭后仅 `Ctrl/Cmd+Enter` 或「立即渲染」触发 |
+| 代码块语法高亮 | 开启 | 关闭后代码块为纯文本，复制按钮不受影响 |
+| 自动识别代码语言 | 开启 | 围栏未标注语言时按内容判定 |
+| 自动链接 | 开启 | 裸 URL 自动成链接（剥尾部标点） |
+| 允许原始 HTML | 关闭 | 白名单放行，见 §17.5；界面注明「仍不加载任何远程资源」 |
+
+存储键（§8.1）：`toolbox:md-view:config[:<serial>]`；会话草稿 `toolbox:md-view:session-draft[:<serial>]:input`。
+
+### 17.7 边界行为（必须保持）
+
+- **空内容**：渲染区显示空态（eye 图标 + 引导文案），统计归零，不产出任何块。
+- **永不抛错**：md-core 对任何输入（含 fuzz 用例：裸反引号、未配对 `**`、`| | |`、NUL 等）不抛异常；
+  解析器自身意外出错时降级为转义纯文本 + warnings 提示（不静默）。
+- **未闭合围栏** → 其后全部按代码块 + warning；未闭合表格 → 该行按段落；深嵌套 → 拍平 + warning。
+- **CRLF** 统一为 LF 后解析；`overflow-wrap: anywhere` 防超长单行撑破布局。
+- 剪贴板读取失败：**先读后清**，编辑区内容不变。
+- 多实例：配置键按 `serial` 分区；DOM `id` 以 `md-view-<serial>` 为前缀；互不串扰。
+
+### 17.8 纯函数 API（可脱离 DOM 在 Node 验证）
+
+```js
+/* md-core.js */
+export const DEFAULT_OPTIONS;                                    // 参数默认值（冻结）
+export function normalizeOptions(options);                        // 合并并收敛参数（冻结返回）
+export function parseBlocks(lines, options, depth?, warnings?);   // → block 数组（自描述对象）
+export function countBlocks(blocks);                              // → number
+export function renderMarkdown(text, options);
+// → { html, stats: { chars, lines, blocks }, warnings: string[], codeBlocks: string[] }
+//   codeBlocks 与 html 中 data-mv-code-copy 索引一一对应（复制按钮取原始文本）
+```
+
+自测：`node tools/md-view/_selftest.mjs`（覆盖综合样例 / 空文本 / 未闭合围栏 / XSS 转义 /
+白名单 HTML / 深嵌套拍平 / 超长代码块降级 / CRLF / 行内代码优先级 / 自动链接 / fuzz 永不抛错）。
+
+---
+
 ## 附录 A：令牌速查
 
 ```
@@ -3545,6 +3670,12 @@ export function isFormulaLeftover({ current, previous, edited })  // -> boolean�
 | | `MIN_COL_WIDTH`（CSS `--fc-col-min`） | 92px（变量列**最小**宽度；列宽自适应，见 §16.4） |
 | | `LOCATE_FLASH_MS` | 1200ms（点 chip 定位后，目标列高亮的持续时间） |
 | | `--fc-table-viewport`（CSS） | `clamp(200px, 34vh, 360px)`（变量表固定视口高度，保证历史记录位置不跳，见 §16.9） |
+| `md-core.js` / `md-view.js`（《MD 预览》，v1.8.0） | `DEBOUNCE_MS` | 180（与既有工具一致） |
+| | `LONG_TEXT_LIMIT` | 300000（字符数；超过暂停实时渲染，改手动「立即渲染」，沿用 §13 先例） |
+| | `highlightMaxBlockChars` | 20000（单代码块着色字符数上限，超出该块回落纯文本） |
+| | `maxDepth` | 16（列表 / 引用嵌套深度上限，超出拍平 + warnings） |
+| | `COPIED_RESET_MS` | 2000ms（「已复制」提示复原时间） |
+| | `CONFIG_PREFIX` | `toolbox:md-view`（实例级配置键前缀，见 §17.6） |
 | `packaging/csharp/Server.cs`（离线单文件分发器，v1.7.21） | `PORTABLE_PORT` | 5183（固定端口；`localStorage` 按 origin 含端口分区，**不得静默更换**，见 docs/OFFLINE-PACKAGING.md §4.C） |
 | | `PORTABLE_HEALTH_PATH` / 健康应答 | `/__healthz` / `toolbox`（单实例探测：启动先 GET 该端点，命中即复用已有实例并退出） |
 | | `PORTABLE_URL` | `http://127.0.0.1:5183/`（只绑定回环；`--app` 三级回退打开：Edge → Chrome → 系统默认浏览器；响应一律 `Cache-Control: no-store`） |

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MD 预览 · 本地工具箱</title>
+    <meta
+      name="description"
+      content="把 Markdown 文本渲染成排版后的页面：标题、代码块（语法高亮与一键复制）、表格、列表一目了然，支持一键粘贴渲染。全部处理在浏览器本地完成。"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f4f1ea" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)" />
+    <!-- 站点图标：内联 SVG（与左侧栏品牌标记同源），不新增文件、不产生额外请求，见 docs/DESIGN.md §3.6 -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%23c2410c'/%3E%3Cg%20transform='translate(6%206)%20scale(.8333)'%20fill='none'%20stroke='%23fff'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M3%206h6'/%3E%3Cpath%20d='M3%2012h6'/%3E%3Cpath%20d='M3%2018h6'/%3E%3Cpath%20d='M10%206c3.5%200%203.5%206%207%206'/%3E%3Cpath%20d='M10%2018c3.5%200%203.5-6%207-6'/%3E%3Cpath%20d='M17%2012h4'/%3E%3Cpath%20d='M18.5%209.5%2021%2012l-2.5%202.5'/%3E%3C/g%3E%3C/svg%3E" />
+
+    <!-- 首屏主题引导：必须在样式表之前同步执行，避免明暗切换闪烁 -->
+    <script src="../../assets/js/theme-boot.js"></script>
+
+    <link rel="stylesheet" href="../../assets/css/tokens.css" />
+    <link rel="stylesheet" href="../../assets/css/base.css" />
+    <link rel="stylesheet" href="../../assets/css/shell.css" />
+    <link rel="stylesheet" href="../../assets/css/tool.css" />
+
+    <!-- 工具私有样式（仅本工具使用，不污染共享样式） -->
+    <link rel="stylesheet" href="./md-view.css" />
+  </head>
+
+  <!-- data-tool 用于：1) 左侧列表高亮当前项；2) shell.js 动态挂载对应工具模块 -->
+  <body data-tool="md-view">
+    <noscript>
+      <p class="no-script">
+        本站需要启用 JavaScript 才能运行。所有计算都在你的浏览器本地完成，不会上传任何数据。
+        <a href="../../assets/noscript.html">查看说明</a>
+      </p>
+    </noscript>
+
+    <div id="shell-root"></div>
+
+    <main class="workspace" id="workspace">
+      <header class="tool-head rise" style="--d: 0ms">
+        <div class="tool-head__main">
+          <h1 class="tool-head__title">MD 预览</h1>
+          <p class="tool-head__desc">
+            把 Markdown 文本渲染成排版后的页面，支持一键粘贴渲染与代码块语法高亮。
+          </p>
+        </div>
+        <div class="tool-head__icon" aria-hidden="true">
+          <svg
+            class="icon"
+            width="26"
+            height="26"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </div>
+      </header>
+
+      <!-- 工具的具体界面由 tools/md-view/md-view.js 的 init() 渲染 -->
+      <div id="tool-body" class="rise" style="--d: 60ms"></div>
+
+      <footer class="site-foot" data-site-footer></footer>
+    </main>
+
+    <!-- 有脚本时把入口统一到标签工作台（index.html#/md-view）；脚本不可用时本页仍完整可读 -->
+    <script src="../../assets/js/tool-redirect.js"></script>
+    <script type="module" src="../../assets/js/shell.js"></script>
+  </body>
+</html>

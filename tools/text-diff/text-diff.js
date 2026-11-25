@@ -34,7 +34,7 @@ import {
   splitText,
   textMetrics,
 } from "./diff-core.js";
-import { LANGUAGE_LIST, LANGUAGES, detectLanguage, mergeSegments, tokenizeLines } from "./highlight.js";
+import { LANGUAGE_LIST, LANGUAGES, detectLanguage, mergeSegments, tokenizeLines } from "../../assets/js/utils/highlight.js";
 
 const CONFIG_KEY = "toolbox:text-diff:config";
 const DEBOUNCE_MS = 180;
