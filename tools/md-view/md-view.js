@@ -77,6 +77,16 @@ export function init(ctx) {
   let renderTimer = 0;
   let copiedTimer = 0;
   let noticeTimer = 0;
+
+  /** 编辑区状态行提示（role="status"，到期自动清空） */
+  function showNotice(text, duration = 4000) {
+    editorNotice.textContent = text;
+    if (noticeTimer) window.clearTimeout(noticeTimer);
+    noticeTimer = window.setTimeout(() => {
+      editorNotice.textContent = "";
+      noticeTimer = 0;
+    }, duration);
+  }
   let editorHeightPx = 0; // 0 = 未拖拽过，用默认比例
   let longTextNoticeShown = false;
   const disposers = [];
@@ -137,7 +147,20 @@ export function init(ctx) {
     });
     return { key, input };
   });
-  dom.append(optionsBar, optionInputs.map((entry) => entry.input.parentElement));
+
+  /* 「本地草稿」（v1.8.5，R5 例外② 模式化复用）：跨实例共享的隐私开关（draft-enabled 键），
+     不进实例 config；默认关；关闭开关即清除已存草稿（draft.setDraftEnabled 的「关 = 清」语义） */
+  const draftEnabledInput = dom.el("input", { attrs: { type: "checkbox", id: `${idPrefix}-opt-draft` } });
+  draftEnabledInput.checked = draft.isDraftEnabled(TOOL_ID);
+  const draftEnabledBox = dom.el("label", {
+    className: "checkbox mv-options__item",
+    attrs: {
+      for: `${idPrefix}-opt-draft`,
+      title: "开启后，输入内容将明文保存在本机浏览器（永不上传）；关闭开关即清除已存草稿",
+    },
+    children: [draftEnabledInput, dom.el("span", { text: "本地草稿" })],
+  });
+  dom.append(optionsBar, [draftEnabledBox, ...optionInputs.map((entry) => entry.input.parentElement)]);
 
   const wrap = dom.el("div", { className: "mv-wrap" });
 
@@ -287,12 +310,7 @@ export function init(ctx) {
     try {
       const clipboardText = await clipboard.readText();
       if (!clipboardText || !clipboardText.trim()) {
-        editorNotice.textContent = "无法读取剪贴板：权限受限或内容为空。";
-        if (noticeTimer) window.clearTimeout(noticeTimer);
-        noticeTimer = window.setTimeout(() => {
-          editorNotice.textContent = "";
-          noticeTimer = 0;
-        }, 2500);
+        showNotice("无法读取剪贴板：权限受限或内容为空。", 2500);
         return;
       }
       if (renderTimer) {
@@ -343,6 +361,20 @@ export function init(ctx) {
       })
     );
   });
+
+  // 「本地草稿」开关（跨实例共享；「关 = 清」语义与《文本对比》《SQL 格式化》同口径）
+  disposers.push(
+    dom.on(draftEnabledInput, "change", () => {
+      const enabled = draftEnabledInput.checked;
+      draft.setDraftEnabled(TOOL_ID, enabled, serial, ["input"]);
+      if (enabled) {
+        draft.saveDraft(TOOL_ID, serial, "input", editorInput.value); // 开启即补写当前内容
+        showNotice("本地草稿已开启：输入内容将明文保存在本机浏览器（永不上传）；关闭开关即清除。", 6000);
+      } else {
+        showNotice("本地草稿已关闭，已清除本机保存的草稿。");
+      }
+    })
+  );
 
   // 代码块「复制」与图片 chip「复制链接」：预览容器上事件委托，单监听服务全部块
   let copiedBtn = null;
@@ -435,10 +467,16 @@ export function init(ctx) {
     })
   );
 
-  /* ── 初始化：恢复会话草稿 → 首次渲染 → 应用视图模式 ─────── */
+  /* ── 初始化：恢复草稿（会话级 > 本地草稿箱，恢复时提示来源）→ 首次渲染 → 应用视图模式 ── */
 
   const restored = draft.loadDraft(TOOL_ID, serial, "input");
-  if (restored.text) editorInput.value = restored.text;
+  if (restored.text) {
+    editorInput.value = restored.text;
+    showNotice(
+      restored.source === "local" ? "已恢复上次保存的本地草稿。" : "已恢复会话草稿（关闭窗口即弃）。",
+      6000
+    );
+  }
   updateEditorStats();
   renderNow();
   applyViewMode(config.viewMode);
