@@ -29,6 +29,10 @@ export const DEFAULT_OPTIONS = Object.freeze({
   autoDetectLanguage: true,
   /** 裸 URL 自动成链接 */
   autoLink: true,
+  /** 函数名着色（v1.8.3 词法增强：标识符后跟 `(` 染 func 色） */
+  funcColoring: true,
+  /** 括号着色（v1.8.3 词法增强：()[]{} 染独立 bracket 色） */
+  bracketColoring: true,
   /** 允许原始 HTML（仍只放行白名单标签与安全属性） */
   allowRawHtml: false,
   /** 列表 / 引用嵌套深度上限，超过拍平 */
@@ -543,6 +547,9 @@ export function countBlocks(blocks) {
  * 块级渲染（block → HTML 字符串）
  * ──────────────────────────────────────────────────────────────── */
 
+/** 彩虹括号的色相数量（v1.8.4，§13.5 同款）：括号按嵌套深度取色，深度 1…6 循环 */
+const BRACKET_HUE_COUNT = 6;
+
 function renderCodeBlock(block, options, index) {
   const raw = block.raw;
   const langId = resolveLanguage(block.info, raw, options);
@@ -551,12 +558,24 @@ function renderCodeBlock(block, options, index) {
   let codeHtml;
   if (canHighlight) {
     const lines = raw.split("\n");
-    const tokens = tokenizeLines(lines, langId);
+    const tokens = tokenizeLines(lines, langId, {
+      func: Boolean(options.funcColoring),
+      bracket: Boolean(options.bracketColoring),
+    });
+    // v1.8.4 彩虹括号：bracket token 带 depth → mv-bk-N（((depth-1) % 6) + 1，§13.5 同款）
     codeHtml = lines
       .map((line, lineIndex) => {
         const row = tokens[lineIndex] || [];
         if (row.length === 0) return "";
-        return row.map((token) => `<span class="mv-tok-${token.type}">${escapeHtml(token.text)}</span>`).join("");
+        return row
+          .map((token) => {
+            const rainbow =
+              token.type === "bracket" && Number.isInteger(token.depth)
+                ? ` mv-bk-${((token.depth - 1) % BRACKET_HUE_COUNT) + 1}`
+                : "";
+            return `<span class="mv-tok-${token.type}${rainbow}">${escapeHtml(token.text)}</span>`;
+          })
+          .join("");
       })
       .join("\n");
   } else {

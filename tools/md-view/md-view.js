@@ -44,6 +44,8 @@ export function init(ctx) {
     realtime: true,
     syntaxHighlight: true,
     autoDetectLanguage: true,
+    funcColoring: true,
+    bracketColoring: true,
     autoLink: true,
     allowRawHtml: false,
   };
@@ -119,6 +121,8 @@ export function init(ctx) {
   const optionDefs = [
     ["realtime", "实时渲染"],
     ["syntaxHighlight", "代码块语法高亮"],
+    ["funcColoring", "函数名着色（标识符后跟括号）"],
+    ["bracketColoring", "括号着色"],
     ["autoDetectLanguage", "自动识别代码语言"],
     ["autoLink", "自动链接"],
     ["allowRawHtml", "允许原始 HTML（仍不加载任何远程资源）"],
@@ -191,6 +195,8 @@ export function init(ctx) {
     return normalizeOptions({
       syntaxHighlight: config.syntaxHighlight,
       autoDetectLanguage: config.autoDetectLanguage,
+      funcColoring: config.funcColoring,
+      bracketColoring: config.bracketColoring,
       autoLink: config.autoLink,
       allowRawHtml: config.allowRawHtml,
     });

@@ -9,7 +9,12 @@
  *   **一种语言 = 一组配置**。新增语言只需在 LANGUAGES 里加一条配置，
  *   不改分词器、不改渲染层。分词器是通用的单遍扫描器，只做词法着色，不做语法分析。
  *
- * token 类型：comment / string / number / keyword / literal / punct / plain
+ * token 类型：comment / string / number / keyword / literal / func / bracket / punct / plain
+ * v1.8.3 词法增强（第三参 colorize 开启时）："func" = 标识符后跟 `(`（启发式，无语义分析）；
+ * "bracket" = ()[]{} 拆出独立色，且 **token 携带 `depth`（嵌套深度，从 1 起）**——
+ * 彩虹括号的取色依据（《SQL 格式化》§13.5 同款逻辑）：开括号记「进入后的层级」，闭括号记
+ * 「它配对的那个开括号的层级」⇒ 同一对括号必然同深度同色；深度跨行携带（同一次 tokenizeLines 调用内）。
+ * 不传 colorize = 旧行为（《文本对比》零回归）。
  */
 
 /** 分词状态下需要跨行携带的字段（块注释、Markdown 代码围栏） */
@@ -211,25 +216,30 @@ function spanAt(spans, index) {
  * 对多行文本分词（跨行携带块注释 / 代码围栏状态）。
  * @param {string[]} lines
  * @param {string} languageId
+ * @param {{ func?: boolean, bracket?: boolean }} [colorize] v1.8.3 词法增强开关；
+ *   func = 标识符后跟 `(` 染 "func"；bracket = ()[]{} 染 "bracket"。**不传 = 旧行为**。
  * @returns {Array<Array<{ text: string, type: string }>>} 与输入等长的 token 行数组
  */
-export function tokenizeLines(lines, languageId) {
+export function tokenizeLines(lines, languageId, colorize) {
+  const funcColoring = Boolean(colorize && colorize.func);
+  const bracketColoring = Boolean(colorize && colorize.bracket);
   const language = LANGUAGES[languageId] || LANGUAGES.text;
   const identifiers = keywordSet(language);
   const literals = language.literals
     ? new Set(String(language.literals).trim().split(/\s+/).map((w) => (language.caseInsensitive ? w.toLowerCase() : w)))
     : new Set();
   const state = { ...INITIAL_STATE };
+  let bracketDepth = 0; // v1.8.4 彩虹括号：嵌套深度（跨行携带，字符串/注释内的括号不进入此路径）
   const output = [];
 
   (Array.isArray(lines) ? lines : []).forEach((rawLine) => {
     const line = typeof rawLine === "string" ? rawLine : "";
     const tokens = [];
-    const push = (text, type) => {
+    const push = (text, type, depth) => {
       if (!text) return;
       const last = tokens[tokens.length - 1];
-      if (last && last.type === type) last.text += text;
-      else tokens.push({ text, type });
+      if (last && last.type === type && last.depth === depth) last.text += text;
+      else tokens.push(depth === undefined ? { text, type } : { text, type, depth });
     };
 
     // Markdown 代码围栏：围栏之间的整行按字符串着色
@@ -355,7 +365,7 @@ export function tokenizeLines(lines, languageId) {
         }
       }
 
-      // 8) 标识符 → 关键字 / 字面量 / 普通
+      // 8) 标识符 → 关键字 / 字面量 / 函数调用（启发式）/ 普通
       if (/[A-Za-z_]/.test(char)) {
         let cursor = index;
         while (cursor < line.length && WORD_RE.test(line[cursor])) cursor += 1;
@@ -363,17 +373,32 @@ export function tokenizeLines(lines, languageId) {
         const probe = language.caseInsensitive ? word.toLowerCase() : word;
         if (identifiers.has(probe)) push(word, "keyword");
         else if (literals.has(probe)) push(word, "literal");
+        else if (funcColoring && isCallAhead(line, cursor)) push(word, "func");
         else push(word, "plain");
         index = cursor;
         continue;
       }
 
-      // 9) 标点 / 空白
+      // 9) 标点 / 空白（v1.8.3：括号可拆独立色，便于与一般标点区分）
       if (/\s/.test(char)) {
         let cursor = index;
         while (cursor < line.length && /\s/.test(line[cursor])) cursor += 1;
         push(line.slice(index, cursor), "plain");
         index = cursor;
+        continue;
+      }
+
+      if (bracketColoring && (char === "(" || char === ")" || char === "[" || char === "]" || char === "{" || char === "}")) {
+        const isOpen = char === "(" || char === "[" || char === "{";
+        if (isOpen) {
+          bracketDepth += 1;
+          push(char, "bracket", bracketDepth);
+        } else {
+          // 闭括号记「配对开括号的层级」⇒ 同一对括号同深度同色；未配对按当前层级取色
+          push(char, "bracket", Math.max(1, bracketDepth));
+          bracketDepth = Math.max(0, bracketDepth - 1);
+        }
+        index += 1;
         continue;
       }
 
@@ -388,11 +413,21 @@ export function tokenizeLines(lines, languageId) {
 }
 
 /**
+ * 启发式：标识符结束后越过空白，下一个字符是否为 `(`（函数调用样式的近似判定）。
+ * 不做语义分析；关键字 / 字面量在调用方已优先判定，不会进入本函数。
+ */
+function isCallAhead(line, cursor) {
+  let i = cursor;
+  while (i < line.length && /\s/.test(line[i])) i += 1;
+  return line[i] === "(";
+}
+
+/**
  * 单行分词（无跨行状态，便于独立断言与简单场景）。
  * @returns {Array<{ text: string, type: string }>}
  */
-export function tokenizeLine(line, languageId) {
-  const [tokens] = tokenizeLines([line], languageId);
+export function tokenizeLine(line, languageId, colorize) {
+  const [tokens] = tokenizeLines([line], languageId, colorize);
   return tokens || [];
 }
 

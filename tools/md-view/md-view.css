@@ -3,7 +3,9 @@
  * ==================================================================
  * 选择器一律带 .mv- 前缀（docs/DESIGN.md §9.5）：标签工作台会在同一页面
  * 加载多个工具的样式，通用选择器会造成跨工具干扰（违反 R6）。
- * 颜色 / 间距 / 字号只引用 tokens.css 令牌，明暗双主题自动适配（§3.7）。
+ * 颜色 / 间距 / 字号优先引用 tokens.css 令牌，明暗双主题自动适配（§3.7）。
+ * 例外（v1.8.1）：代码块用组件作用域变量 --mv-code-* / --mv-tok-*，
+ * 浅色主题取系统令牌默认值，暗色主题参考 GitHub Dark 改用高辨识语法色（见 §17.5）。
  */
 
 /* ── 总布局：工具条 + 选项条 + 上下分离主体 ───────────────── */
@@ -246,6 +248,52 @@
   color: var(--text-body);
   font-size: var(--fs-body);
   overflow-wrap: anywhere;
+
+  /* 代码块配色（v1.8.1）：浅色默认 = 系统令牌；暗色三主题由下方选择器覆盖 */
+  --mv-code-bg: var(--bg-inset);
+  --mv-code-bar-bg: var(--bg-sunken);
+  --mv-code-border: var(--hairline-strong);
+  --mv-tok-comment: var(--text-faint);
+  --mv-tok-string: var(--ok);
+  --mv-tok-number: var(--info);
+  --mv-tok-keyword: var(--accent);
+  --mv-tok-literal: var(--warn);
+  --mv-tok-punct: var(--text-muted);
+  --mv-tok-func: #8250df; /* GitHub Light 函数紫 */
+  --mv-tok-bracket: var(--text-strong);
+  /* 彩虹括号（v1.8.4，§13.5 同款）：色相红黄绿蓝紫粉，浅色按纸感底调深 */
+  --mv-br-1: hsl(0 75% 42%);
+  --mv-br-2: hsl(60 80% 24%);
+  --mv-br-3: hsl(120 60% 30%);
+  --mv-br-4: hsl(200 80% 32%);
+  --mv-br-5: hsl(270 65% 44%);
+  --mv-br-6: hsl(320 70% 40%);
+}
+
+/* 暗色三主题：参考 GitHub Dark 的代码块处理 —— 页面底(--bg-surface) > 头栏(--bg-inset) >
+   代码体(--bg-sunken) 三层明度反差，块体彻底沉底；语法色换高辨识取向（§17.5） */
+:root[data-theme="dark"] .mv-preview__content,
+:root[data-theme="dark-dimmed"] .mv-preview__content,
+:root[data-theme="dark-contrast"] .mv-preview__content {
+  --mv-code-bg: var(--bg-sunken);
+  --mv-code-bar-bg: var(--bg-inset);
+  --mv-code-border: var(--hairline-strong);
+  /* GitHub Dark 同源语法色（底 --bg-sunken ≤ #141312，全部 ≥ 4.8:1） */
+  --mv-tok-keyword: #ff7b72;
+  --mv-tok-string: #a5d6ff;
+  --mv-tok-number: #79c0ff;
+  --mv-tok-literal: #ffa657;
+  --mv-tok-comment: #8b949e;
+  --mv-tok-punct: #c9d1d9;
+  --mv-tok-func: #d2a8ff; /* GitHub Dark 函数紫 */
+  --mv-tok-bracket: #e6edf3; /* 无深度时的回落色 */
+  /* 彩虹括号暗色板：色相与浅色一一对应，整体提亮保证深底可辨 */
+  --mv-br-1: hsl(0 90% 68%);
+  --mv-br-2: hsl(60 85% 62%);
+  --mv-br-3: hsl(120 70% 60%);
+  --mv-br-4: hsl(200 90% 68%);
+  --mv-br-5: hsl(270 85% 74%);
+  --mv-br-6: hsl(320 85% 72%);
 }
 
 .mv-preview__content[hidden] {
@@ -310,12 +358,12 @@
   border-top: 1px solid var(--hairline-strong);
 }
 
-/* 行内代码 */
+/* 行内代码（v1.8.2：描边用 --hairline-strong —— --hairline 在暗色下与底色近同值不可见） */
 .mv-preview__content .mv-codespan {
   padding: 0.15em 0.4em;
   border-radius: 4px;
   background: var(--bg-inset);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--hairline-strong);
   font-family: var(--font-mono);
   font-size: 0.9em;
   color: var(--text-strong);
@@ -330,10 +378,10 @@
 
 .mv-preview__content .mv-code {
   margin: 0.9em 0;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--mv-code-border);
   border-radius: var(--r-md);
   overflow: hidden;
-  background: var(--bg-inset);
+  background: var(--mv-code-bg);
 }
 
 .mv-preview__content .mv-code__bar {
@@ -343,7 +391,7 @@
   gap: var(--sp-2, 8px);
   padding: 4px 8px 4px 12px;
   border-bottom: 1px solid var(--hairline);
-  background: var(--bg-sunken);
+  background: var(--mv-code-bar-bg);
 }
 
 .mv-preview__content .mv-code__lang {
@@ -380,32 +428,67 @@
   color: var(--text-strong);
 }
 
-/* ── 语法着色（与《文本对比》同源语义，改用 mv- 前缀 + 主题令牌）── */
+/* ── 语法着色（与《文本对比》同源语义；色值经 --mv-tok-* 随主题切换）── */
 
 .mv-preview__content .mv-tok-comment {
-  color: var(--text-faint);
+  color: var(--mv-tok-comment);
   font-style: italic;
 }
 
 .mv-preview__content .mv-tok-string {
-  color: var(--ok);
+  color: var(--mv-tok-string);
 }
 
 .mv-preview__content .mv-tok-number {
-  color: var(--info);
+  color: var(--mv-tok-number);
 }
 
 .mv-preview__content .mv-tok-keyword {
-  color: var(--accent);
+  color: var(--mv-tok-keyword);
   font-weight: var(--fw-medium, 500);
 }
 
 .mv-preview__content .mv-tok-literal {
-  color: var(--warn);
+  color: var(--mv-tok-literal);
 }
 
 .mv-preview__content .mv-tok-punct {
-  color: var(--text-muted);
+  color: var(--mv-tok-punct);
+}
+
+/* v1.8.3 词法增强：函数调用名（启发式）与括号 */
+.mv-preview__content .mv-tok-func {
+  color: var(--mv-tok-func);
+}
+
+.mv-preview__content .mv-tok-bracket {
+  color: var(--mv-tok-bracket);
+}
+
+/* 彩虹括号（v1.8.4）：按嵌套深度取色，深度 1…6 循环；同一对括号必然同色。
+   选项关闭时分词器不产出 bracket token ⇒ 这些类无从出现，单点实现（§13.5 口径） */
+.mv-preview__content .mv-bk-1 {
+  color: var(--mv-br-1);
+}
+
+.mv-preview__content .mv-bk-2 {
+  color: var(--mv-br-2);
+}
+
+.mv-preview__content .mv-bk-3 {
+  color: var(--mv-br-3);
+}
+
+.mv-preview__content .mv-bk-4 {
+  color: var(--mv-br-4);
+}
+
+.mv-preview__content .mv-bk-5 {
+  color: var(--mv-br-5);
+}
+
+.mv-preview__content .mv-bk-6 {
+  color: var(--mv-br-6);
 }
 
 .mv-preview__content .mv-tok-plain {
