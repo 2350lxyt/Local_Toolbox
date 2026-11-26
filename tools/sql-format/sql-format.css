@@ -228,6 +228,13 @@
   font-size: var(--fs-sm);
 }
 
+/* 替换输入框（v1.8.7）：比搜索框窄一档，与「替换 / 全部替换」按钮同组 */
+.sf-find__replace {
+  width: clamp(140px, 22vw, 260px);
+  padding: 6px var(--sp-3);
+  font-size: var(--fs-sm);
+}
+
 .sf-find .btn,
 .sf-find .icon-btn {
   height: 30px;
@@ -531,6 +538,143 @@
 
 .sf-editor[data-rainbow="on"] .sf-br--6 {
   color: var(--sf-br-6);
+}
+
+/* --------------------------------------------- 表别名配色（v1.8.6，§13.5） */
+
+/* 表名 / 别名 / `alias.column` 限定前缀按**所属表**取色（1…6 按表名首现顺序循环），
+   字段归属一眼可辨。色板是**工具私有**变量（明暗各一套），不上移 tokens.css（§11.1）；
+   色相刻意避开既有 token 色（关键字橙 / 类型琥珀 / 字符串绿 / 数字蓝 / 绑定红）与彩虹括号色，
+   全部落在冷色区（青 / 黄绿 / 蓝 / 紫 / 品红），明暗两套主题下与其所在底色对比度 ≥ 4.5:1。
+   别名标记渲染为 `<mark class="sf-alias--N">`：标记**不设底色**、只改文字色 ——
+   这是与搜索命中类标记（只负责底色）的分工差异：归属信息就住在文字色里。
+   硬性：只改颜色与（qident 原有的）字重，不得碰字号 / 字距 / padding（度量对齐，§13.5）。 */
+.sf-editor {
+  --sf-alias-1: hsl(88 60% 28%);
+  --sf-alias-2: hsl(172 65% 25%);
+  --sf-alias-3: hsl(228 60% 40%);
+  --sf-alias-4: hsl(262 55% 42%);
+  --sf-alias-5: hsl(292 55% 40%);
+  --sf-alias-6: hsl(332 60% 38%);
+}
+
+/* 暗色三主题：整体提亮，保证深底上可辨（色相与亮色主题一一对应，口径同彩虹括号） */
+:root[data-theme="dark"] .sf-editor,
+:root[data-theme="dark-dimmed"] .sf-editor,
+:root[data-theme="dark-contrast"] .sf-editor {
+  --sf-alias-1: hsl(88 70% 62%);
+  --sf-alias-2: hsl(172 70% 58%);
+  --sf-alias-3: hsl(228 85% 68%);
+  --sf-alias-4: hsl(262 80% 72%);
+  --sf-alias-5: hsl(292 75% 70%);
+  --sf-alias-6: hsl(332 80% 68%);
+}
+
+/* 色号 → 具体颜色：经中间变量下发，六条类规则之外无需重复声明 */
+.sf-highlight mark[class^="sf-alias--"] {
+  background: none;
+  color: var(--sf-alias-color, inherit);
+}
+
+.sf-alias--1 { --sf-alias-color: var(--sf-alias-1); }
+.sf-alias--2 { --sf-alias-color: var(--sf-alias-2); }
+.sf-alias--3 { --sf-alias-color: var(--sf-alias-3); }
+.sf-alias--4 { --sf-alias-color: var(--sf-alias-4); }
+.sf-alias--5 { --sf-alias-color: var(--sf-alias-5); }
+.sf-alias--6 { --sf-alias-color: var(--sf-alias-6); }
+
+/* 别名标记内部的双引号标识符（qident 自带 text-strong 色）也回到归属色，
+   保证 `别名."列"` 的限定前缀同样着色 */
+.sf-highlight mark[class^="sf-alias--"] .sf-tok--qident {
+  color: inherit;
+}
+
+/* ----------------------------------------- 语法校验标记（v1.8.8，§13.5） */
+
+/* 诊断用**波浪下划线**表达：text-decoration 不参与布局 —— 不改变字符宽度，
+   不会与透明 textarea 错位（与彩虹括号 / 别名配色同一度量硬约束）。
+   error 用 --danger、warn 用 --warn，与既有语义族一致；下划线可与 token 色、
+   搜索命中底色叠加，互不冲突（底色走 <mark>、下划线走 token span，两条管线不打架）。 */
+.sf-highlight .sf-lint--error {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: var(--danger);
+  text-underline-offset: 3px;
+}
+
+.sf-highlight .sf-lint--warn {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: var(--warn);
+  text-underline-offset: 3px;
+}
+
+/* 校验面板：编辑器左列下方，有问题才展开 */
+.sf-main-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.sf-lint__list {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.sf-lint__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  background: none;
+  border: 0;
+  border-top: 1px dashed var(--hairline);
+  text-align: left;
+  font-size: var(--fs-xs);
+  color: var(--text-body);
+  cursor: pointer;
+}
+
+.sf-lint__item:first-child {
+  border-top: 0;
+}
+
+.sf-lint__item:hover {
+  background: var(--bg-inset);
+}
+
+.sf-lint__badge {
+  flex: none;
+  padding: 0 var(--sp-2);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: var(--fs-2xs);
+  line-height: 18px;
+}
+
+.sf-lint__item--error .sf-lint__badge {
+  color: var(--danger);
+}
+
+.sf-lint__item--warn .sf-lint__badge {
+  color: var(--warn);
+}
+
+.sf-lint__pos {
+  flex: none;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.sf-lint__msg {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* --------------------------------------------------- 命中 / 括号匹配标记 */

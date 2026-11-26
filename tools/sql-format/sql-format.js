@@ -11,8 +11,8 @@
  *
  * 分层：
  *   1. 纯函数核心  DEFAULT_CONFIG / normalizeConfig / configEquals /
- *                  tokenize / buildBracketPairs / findMatches / formatSql /
- *                  renderHighlight / BUILTIN_PRESETS / serializePresets /
+ *                  tokenize / buildBracketPairs / analyzeAliases / findMatches /
+ *                  formatSql / renderHighlight / BUILTIN_PRESETS / serializePresets /
  *                  parseImportPayload        ← 顶层不触碰 DOM，可 import 到 Node 验证
  *   2. 存储适配层  loadCustomPresets / saveCustomPresets / loadSession / saveSession
  *   3. UI 编排层   init(ctx)
@@ -213,6 +213,20 @@ const TOKEN_CLASS = {
  */
 function bracketDepthClass(token) {
   return Number.isInteger(token.depth) ? ` sf-br--${((token.depth - 1) % BRACKET_HUE_COUNT) + 1}` : "";
+}
+
+/**
+ * 语法校验标记类（v1.8.8，§13.5）：token 携带 `lint`（"error" / "warn"，由 UI 侧
+ * 依据 lintSql 结果写回）时追加波浪下划线类；**只加 text-decoration，不碰度量**。
+ * 平时无类的普通标识符在被标记时也输出 span，使其能携带下划线。
+ */
+function tokenSpanClass(token) {
+  const lint =
+    token.lint === "error" ? " sf-lint--error" :
+    token.lint === "warn" ? " sf-lint--warn" : "";
+  const base = TOKEN_CLASS[token.type] || "";
+  if (!base && !lint && !Number.isInteger(token.depth)) return "";
+  return `${base}${bracketDepthClass(token)}${lint}`;
 }
 
 function isIdentStart(ch) {
@@ -551,6 +565,323 @@ export function buildBracketPairs(tokens) {
   return { pairs, unmatched };
 }
 
+/* ====================================================== 表别名归属分析 */
+
+/**
+ * 表别名配色的色相数量（v1.8.6，§13.5）：按表名首次出现顺序取色，1…ALIAS_HUE_COUNT 循环。
+ * 与彩虹括号（BRACKET_HUE_COUNT）同口径，便于「层级色 / 归属色」语义各自独立。
+ */
+export const ALIAS_HUE_COUNT = 6;
+
+function isNameToken(token) {
+  return !!token && (token.type === "ident" || token.type === "qident");
+}
+
+function isNoiseToken(token) {
+  return !!token && (token.type === "ws" || token.type === "com");
+}
+
+function skipNoise(tokens, index) {
+  let i = index;
+  while (i < tokens.length && isNoiseToken(tokens[i])) i += 1;
+  return i;
+}
+
+/** 色号 → CSS 类名（1…ALIAS_HUE_COUNT 循环） */
+function aliasClass(colorIndex) {
+  return `sf-alias--${((colorIndex - 1) % ALIAS_HUE_COUNT) + 1}`;
+}
+
+/**
+ * 语句中可引入表（及其别名）的关键字。`DELETE FROM` 复用 FROM；
+ * PL/SQL 的 `SELECT … INTO 变量` 会把变量误认作表名 —— 只多一处着色，不影响内容，可接受。
+ */
+const TABLE_INTRO = new Set(["FROM", "JOIN", "UPDATE", "INTO"]);
+
+/**
+ * 消费单个「表名 [AS] 别名」结构（v1.8.6，§13.5）。
+ * from 指向子句关键字（FROM / JOIN / UPDATE / INTO）或前一个表引用的逗号之后：
+ *   ① 表名链：name ( . name )*，支持 schema.table，取**末段**为表名；
+ *   ② 别名：`AS` 可省略，且必须是标识符（关键字已被词法器分类，天然排除）。
+ * 识别失败原样返回 from —— 只是不着色，绝不影响内容。
+ * @param {Array} tokens
+ * @param {number} from 起始下标
+ * @param {Map<string, number>} refs 名称（大写）→ 色号；同表别名登记同色
+ * @param {(token: Object, color: number) => void} addMark 标记登记回调（内部按 start 去重）
+ * @param {() => number} nextColor 分配下一个色号（按表名首现顺序，1 起）
+ * @returns {number} 消费结束后的下标（调用方从该下标继续）
+ */
+function consumeOneTable(tokens, from, refs, addMark, nextColor) {
+  let k = skipNoise(tokens, from);
+  if (!isNameToken(tokens[k])) return from;
+
+  /* 表名链：name ( . name )* */
+  const parts = [tokens[k]];
+  k = skipNoise(tokens, k + 1);
+  while (
+    k < tokens.length &&
+    tokens[k].type === "punct" &&
+    tokens[k].value === "." &&
+    isNameToken(tokens[skipNoise(tokens, k + 1)])
+  ) {
+    k = skipNoise(tokens, k + 1);
+    parts.push(tokens[k]);
+    k = skipNoise(tokens, k + 1);
+  }
+
+  const tableToken = parts[parts.length - 1];
+  const tableName = tableToken.value.toUpperCase();
+  const registered = refs.get(tableName);
+  const color = registered !== undefined ? registered : nextColor();
+  if (registered === undefined) refs.set(tableName, color);
+  parts.forEach((part) => addMark(part, color));
+
+  /* 别名：AS 可省略 */
+  let a = skipNoise(tokens, k);
+  if (tokens[a] && tokens[a].type === "kw" && tokens[a].value.toUpperCase() === "AS") {
+    a = skipNoise(tokens, a + 1);
+  }
+  if (isNameToken(tokens[a])) {
+    const aliasName = tokens[a].value.toUpperCase();
+    if (!refs.has(aliasName)) refs.set(aliasName, color);
+    addMark(tokens[a], color);
+    return a + 1;
+  }
+  return k;
+}
+
+/**
+ * 消费「表名 [AS] 别名」结构，并在表引用语境中延续逗号多表列表：
+ * `FROM a, b c, schema.d d`。逗号是否延续只由「后面确实是表名」决定，
+ * 因此不会误入选择列表等其它逗号语境（那里根本不会进入本函数）。
+ */
+function consumeTableRef(tokens, from, refs, addMark, nextColor) {
+  let k = consumeOneTable(tokens, from, refs, addMark, nextColor);
+  if (k === from) return from;
+  while (k < tokens.length) {
+    const comma = skipNoise(tokens, k);
+    if (!(tokens[comma] && tokens[comma].type === "punct" && tokens[comma].value === ",")) break;
+    const next = consumeOneTable(tokens, comma + 1, refs, addMark, nextColor);
+    if (next === comma + 1) break;
+    k = next;
+  }
+  return k;
+}
+
+/**
+ * 表别名归属分析（v1.8.6，§13.5）：在 token 流上二遍扫描，产出「表别名配色」覆盖标记，
+ * 供 renderHighlight 系列与搜索标记共用同一条渲染管线（`<mark class="sf-alias--N">`）。
+ *
+ * 第一遍（定义收集）：
+ *   ① `FROM` / `JOIN` / `UPDATE` / `INSERT INTO` 后的表名（含 `schema.table` 链与逗号多表列表）；
+ *   ② 表别名（`AS` 可省略）与派生表别名 `) alias`；
+ *   并为「表名 ↔ 别名」登记同一色号（按表名首次出现顺序取 ALIAS_HUE_COUNT 循环）。
+ * 第二遍（引用回填）：`alias.column` / `table.column` 的限定前缀按登记色号着色 ——
+ *   字段归属一眼可辨的关键。
+ *
+ * 识别只基于 token 类型与相邻关系（启发式）：关键字、字符串与注释内部永不参与；
+ * 识别失败只是**不着色**，绝不影响文本内容与格式化结果。输出标记按 start 升序
+ * （渲染层的单指针 markCursor 假定有序，§13.5）。
+ * @param {Array} tokens tokenize 的结果
+ * @returns {{ marks: Array<{ start: number, end: number, className: string }>, refs: Map<string, number> }}
+ *          refs：名称（表名 / 别名，大写）→ 色号（1 起），供调试与扩展
+ */
+export function analyzeAliases(tokens) {
+  const list = Array.isArray(tokens) ? tokens : [];
+  const refs = new Map();
+  const byStart = new Map();
+  let tableCount = 0;
+
+  const addMark = (token, color) => {
+    if (!isNameToken(token) || byStart.has(token.start)) return;
+    byStart.set(token.start, {
+      start: token.start,
+      end: token.end,
+      className: aliasClass(color),
+    });
+  };
+  const nextColor = () => {
+    tableCount += 1;
+    return tableCount;
+  };
+
+  /* ---- 第一遍：定义收集 ---- */
+  for (let i = 0; i < list.length; ) {
+    const token = list[i];
+    if (token.type === "kw" && TABLE_INTRO.has(token.value.toUpperCase())) {
+      i = consumeTableRef(list, i + 1, refs, addMark, nextColor);
+      continue;
+    }
+    if (token.type === "punct" && token.value === ")") {
+      /* 派生表别名：) [AS] alias（子查询 / 表函数调用结果） */
+      let a = skipNoise(list, i + 1);
+      if (list[a] && list[a].type === "kw" && list[a].value.toUpperCase() === "AS") {
+        a = skipNoise(list, a + 1);
+      }
+      if (isNameToken(list[a])) {
+        const name = list[a].value.toUpperCase();
+        const color = refs.has(name) ? refs.get(name) : nextColor();
+        if (!refs.has(name)) refs.set(name, color);
+        addMark(list[a], color);
+        i = a + 1;
+        continue;
+      }
+      i += 1;
+      continue;
+    }
+    i += 1;
+  }
+
+  /* ---- 第二遍：限定前缀回填 ---- */
+  for (let i = 0; i < list.length; i += 1) {
+    const token = list[i];
+    if (!isNameToken(token)) continue;
+    const next = skipNoise(list, i + 1);
+    if (!(list[next] && list[next].type === "punct" && list[next].value === ".")) continue;
+    const color = refs.get(token.value.toUpperCase());
+    if (color !== undefined) addMark(token, color);
+  }
+
+  const marks = Array.from(byStart.values()).sort((a, b) => a.start - b.start);
+  return { marks, refs };
+}
+
+/**
+ * 过滤注释（v1.8.7，§13.5）：基于 tokenize 的注释 token（`com`，覆盖 `--` 行注释与
+ * `/* … *` 块注释）重建文本，**不解析注释内容**——Oracle 提示 `/*+ … *` 一并去除。
+ * 后处理口径：行尾空白裁掉；整行被注释占满而变空的行删除；连续空行压缩为单行、
+ * 首尾空行去除（与 `blankLines: "collapse"` 的既有语义一致）。
+ * 纯显示 / 拿走结果用：绝不改写编辑区内容。
+ * @param {string} sql 原始 SQL 文本
+ * @param {string} dialect 方言（决定 tokenize 的识别集合）
+ * @returns {string} 去注释后的文本
+ */
+export function stripComments(sql, dialect) {
+  if (typeof sql !== "string" || sql === "") return "";
+  const tokens = tokenize(sql, dialect);
+  let rebuilt = "";
+  for (let i = 0; i < tokens.length; i += 1) {
+    if (tokens[i].type === "com") continue;
+    rebuilt += sql.slice(tokens[i].start, tokens[i].end);
+  }
+  const lines = rebuilt.split("\n").map((line) => line.replace(/[ \t]+$/, ""));
+  const kept = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (line === "" && (kept.length === 0 || kept[kept.length - 1] === "")) continue;
+    kept.push(line);
+  }
+  while (kept.length > 0 && kept[kept.length - 1] === "") kept.pop();
+  return kept.join("\n");
+}
+
+/* ==================================================== 语法校验（轻量 lint） */
+
+/** PostgreSQL 专用运算符（在 Oracle 文本中出现即报）：类型转换与 JSON / 正则取值族 */
+const POSTGRES_ONLY_OPERATORS = new Set([
+  "::", "->", "->>", "#>", "#>>", "~*", "!~", "!~*", "@>", "<@",
+]);
+
+/**
+ * 轻量语法校验（v1.8.8，§13.5）：在词法级与 token 相邻级做**高置信度**检查，
+ * **不做完整 SQL 解析** —— 口径是「一定有问题才报，宁可漏报、不可误报」：
+ *   ① 未闭合字符串 / 未闭合块注释（error）：词法器对未闭合字面量一路吞到文本末尾，据此判定；
+ *   ② 括号不配对（error）：复用 `buildBracketPairs` 的既有结果，不重复实现（§13.6 同源口径）；
+ *   ③ 方言外保留字 / 内置函数（warn）：token 类型为 ident（= 当前方言词表没有）、
+ *      且出现在**另一方言**的特有词表中 —— 带引号标识符（qident）永不参与；
+ *   ④ 方言外运算符（warn）：PostgreSQL 的 `::` / `->` / `#>` 等出现在 Oracle 文本；
+ *      Oracle 外连接标记 `(+)`（`(` `+` `)` 三连）出现在 PostgreSQL 文本；
+ *   ⑤ 方言外绑定变量（warn）：PostgreSQL 位置参数 `$n` 出现在 Oracle 文本。
+ * 词表外的东西（用户自定义函数、未知标识符）**一律不报** —— 无法判定对错就不说话。
+ * @param {Array} tokens tokenize 的结果
+ * @param {string} dialect 方言（oracle / postgres）
+ * @returns {Array<{ start: number, end: number, severity: "error"|"warn", code: string, message: string }>}
+ *          按 start 升序；start/end 即对应 token 的范围，供下划线渲染与点击定位
+ */
+export function lintSql(tokens, dialect) {
+  const list = Array.isArray(tokens) ? tokens : [];
+  const dia = DIALECTS.includes(dialect) ? dialect : DEFAULT_CONFIG.dialect;
+  const other = dia === "oracle" ? "postgres" : "oracle";
+  const otherLabel = DIALECT_LABEL[other];
+  const currentLabel = DIALECT_LABEL[dia];
+  const foreignKeywords = toSet(DIALECT_EXTRA_KEYWORDS[other]);
+  const foreignFunctions = toSet(DIALECT_EXTRA_FUNCTIONS[other]);
+  const diags = [];
+
+  const add = (token, severity, code, message) => {
+    diags.push({ start: token.start, end: token.end, severity, code, message });
+  };
+
+  for (let i = 0; i < list.length; i += 1) {
+    const token = list[i];
+    const value = token.value;
+
+    if (token.type === "str") {
+      /* 闭合判定：单引号 / q'' / E'' 以收尾引号为准；美元引用以「收尾 = 开头定界符」为准 */
+      const dollarTag = /^\$[A-Za-z_]*\$/.exec(value);
+      const unclosed = dollarTag ? !value.endsWith(dollarTag[0]) : !value.endsWith("'");
+      if (unclosed) {
+        add(token, "error", "unclosed-string", "字符串未闭合（缺少收尾的单引号 / 定界符），其后内容可能被吞进字符串。");
+      }
+      continue;
+    }
+
+    if (token.type === "com" && value.startsWith("/*") && !value.endsWith("*/")) {
+      add(token, "error", "unclosed-comment", "块注释未闭合（缺少 */），其后内容都被当作注释。");
+      continue;
+    }
+
+    if (token.type === "ident") {
+      const upper = value.toUpperCase();
+      if (foreignKeywords.has(upper)) {
+        add(token, "warn", "foreign-keyword",
+          `「${value}」是 ${otherLabel} 专用关键字，${currentLabel} 无法识别（若为同名表 / 列名请忽略）。`);
+      } else if (foreignFunctions.has(upper)) {
+        add(token, "warn", "foreign-function",
+          `「${value}」是 ${otherLabel} 内置函数，${currentLabel} 没有该内置函数（若为自定义函数请忽略）。`);
+      }
+      continue;
+    }
+
+    if (token.type === "op" && dia === "oracle" && POSTGRES_ONLY_OPERATORS.has(value)) {
+      add(token, "warn", "foreign-operator",
+        `运算符「${value}」是 ${otherLabel} 专用，${currentLabel} 不支持。`);
+      continue;
+    }
+
+    if (token.type === "bind" && value.startsWith("$") && dia === "oracle") {
+      add(token, "warn", "foreign-bind",
+        `位置参数「${value}」是 ${otherLabel} 语法，${currentLabel} 使用 :name 形式的绑定变量。`);
+      continue;
+    }
+  }
+
+  /* Oracle 外连接标记 (+)：punct( + op+ + punct) 三连，仅在 PostgreSQL 文本中报 */
+  if (dia === "postgres") {
+    for (let i = 0; i + 2 < list.length; i += 1) {
+      if (
+        list[i].type === "punct" && list[i].value === "(" &&
+        list[i + 1].type === "op" && list[i + 1].value === "+" &&
+        list[i + 2].type === "punct" && list[i + 2].value === ")"
+      ) {
+        add(list[i], "warn", "foreign-operator",
+          "「(+)」是 Oracle 外连接标记，PostgreSQL 请改用 LEFT / RIGHT JOIN 语法。");
+        i += 2;
+      }
+    }
+  }
+
+  /* 括号配对：与括号匹配高亮同一份数据源（§13.6），不重复实现 */
+  const { unmatched } = buildBracketPairs(list);
+  list.forEach((token) => {
+    if (unmatched.has(token.start)) {
+      add(token, "error", "unbalanced-bracket", `括号「${token.value}」不配对。`);
+    }
+  });
+
+  return diags.sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
 /* ========================================================== 搜索匹配 */
 
 /** 全词匹配的词边界判定字符集 */
@@ -632,7 +963,7 @@ export function renderHighlight(text, tokens, marks, escape) {
   const source = String(text === null || text === undefined ? "" : text);
   const escapeFn = typeof escape === "function" ? escape : (value) => value;
   const tokenList = (Array.isArray(tokens) ? tokens : []).filter(
-    (token) => token.end > token.start && TOKEN_CLASS[token.type]
+    (token) => token.end > token.start && (TOKEN_CLASS[token.type] || token.lint)
   );
   const markList = (Array.isArray(marks) ? marks : [])
     .filter((mark) => mark && mark.end > mark.start && mark.className)
@@ -688,8 +1019,9 @@ export function renderHighlight(text, tokens, marks, escape) {
     let next = cursor;
     while (next < pieces.length && pieces[next].mark === mark) {
       const piece = pieces[next];
-      inner += piece.token
-        ? `<span class="${TOKEN_CLASS[piece.token.type]}${bracketDepthClass(piece.token)}">${piece.text}</span>`
+      const spanClass = piece.token ? tokenSpanClass(piece.token) : "";
+      inner += spanClass
+        ? `<span class="${spanClass}">${piece.text}</span>`
         : piece.text;
       next += 1;
     }
@@ -779,6 +1111,10 @@ export const DEFAULT_CONFIG = Object.freeze({
   blankLines: "collapse",
   /** 彩虹括号（v1.7.16，§13.5）：按嵌套深度给成对括号着色；**只影响显示**，不影响格式化（R7 参数化） */
   rainbowBrackets: true,
+  /** 表别名配色（v1.8.6，§13.5）：表名 / 别名 / 限定前缀按所属表同色着色；**只影响显示**（R7 参数化） */
+  aliasColors: true,
+  /** 语法校验（v1.8.8，§13.5）：词法级高置信度检查（未闭合字面量 / 括号配对 / 方言外词表）；**只提示，不改写**（R7 参数化） */
+  lintEnabled: true,
 });
 
 const INDENT_STYLES = ["space", "tab"];
@@ -805,6 +1141,8 @@ const CONFIG_KEYS = [
   "logicalIndent",
   "blankLines",
   "rainbowBrackets",
+  "aliasColors",
+  "lintEnabled",
 ];
 
 function pickEnum(value, allowed, fallback) {
@@ -845,6 +1183,8 @@ export function normalizeConfig(partial) {
     logicalIndent: pickBoolean(source.logicalIndent, DEFAULT_CONFIG.logicalIndent),
     blankLines: pickEnum(source.blankLines, BLANK_LINE_MODES, DEFAULT_CONFIG.blankLines),
     rainbowBrackets: pickBoolean(source.rainbowBrackets, DEFAULT_CONFIG.rainbowBrackets),
+    aliasColors: pickBoolean(source.aliasColors, DEFAULT_CONFIG.aliasColors),
+    lintEnabled: pickBoolean(source.lintEnabled, DEFAULT_CONFIG.lintEnabled),
   };
 }
 
@@ -1532,6 +1872,10 @@ const TEMPLATE = `
     <!-- v1.7.27：复制从编辑器页脚提到主操作条 —— 格式化后最常做的下一步就是拿走结果，
          而工具条是 sticky 的、页脚要滚动才看得见 -->
     <button class="btn" type="button" data-action="copy" title="复制编辑器中的全部 SQL">__I_COPY__ 复制</button>
+    <!-- v1.8.7：过滤注释只作用于「复制」这一拿走结果的动作，绝不改写编辑区内容 -->
+    <label class="checkbox" title="勾选后，复制时去除 SQL 中的注释（-- 行注释与 /* … */ 块注释）">
+      <input type="checkbox" data-copy-strip-comments /><span>过滤注释</span>
+    </label>
     <button class="icon-btn" type="button" data-action="find" title="关键词搜索（Ctrl/Cmd + F）"
             aria-label="关键词搜索">__I_SEARCH__</button>
   </div>
@@ -1611,6 +1955,12 @@ const TEMPLATE = `
           title="上一个匹配（Shift + Enter）" aria-label="上一个匹配">__I_UP__</button>
   <button class="icon-btn" type="button" data-action="find-next"
           title="下一个匹配（Enter）" aria-label="下一个匹配">__I_DOWN__</button>
+  <!-- v1.8.7：替换 —— 与搜索共用同一份命中列表（区分大小写 / 全词匹配随之生效） -->
+  <label class="sr-only" for="sf-replace-input">替换为</label>
+  <input class="input sf-find__replace" id="sf-replace-input" type="text" autocomplete="off"
+         spellcheck="false" placeholder="替换为…" />
+  <button class="btn" type="button" data-action="replace-one" title="替换当前匹配（Enter）">替换</button>
+  <button class="btn" type="button" data-action="replace-all" title="替换全部匹配">全部替换</button>
   <label class="sf-find__check">
     <input type="checkbox" data-find-case /><span>区分大小写</span>
   </label>
@@ -1623,6 +1973,8 @@ const TEMPLATE = `
 </div>
 
 <div class="sf-layout">
+  <!-- v1.8.8：编辑器与「语法校验」面板同属左列（flex 纵排），不占 .sf-layout 的右列格 -->
+  <div class="sf-main-col">
   <section class="panel" aria-labelledby="sf-panel-editor">
     <div class="panel__head">
       <h2 class="panel__title" id="sf-panel-editor">__I_DB__ SQL 编辑器</h2>
@@ -1648,6 +2000,16 @@ const TEMPLATE = `
       <span class="panel__hint" id="sf-editor-note">零网络请求 · 零数据上传</span>
     </div>
   </section>
+
+  <!-- 语法校验（v1.8.8，§13.5）：有问题才出现；条目点击定位到编辑区对应位置 -->
+  <section class="panel sf-lint-panel" data-lint-panel hidden aria-live="polite">
+    <div class="panel__head">
+      <h2 class="panel__title">__I_ALERT__ 语法校验</h2>
+      <span class="panel__hint" data-lint-summary></span>
+    </div>
+    <div class="sf-lint__list" data-lint-list></div>
+  </section>
+  </div>
 
   <div class="sf-side">
     <section class="panel" aria-labelledby="sf-panel-options">
@@ -1782,6 +2144,14 @@ const TEMPLATE = `
             <label class="checkbox">
               <input type="checkbox" id="sf-rainbow-brackets" />
               <span>彩虹括号（按嵌套层级着色）</span>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="sf-alias-colors" />
+              <span>表别名配色（字段按所属表着色）</span>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="sf-lint-enabled" />
+              <span>语法校验（未闭合字面量 / 括号配对 / 方言外词表）</span>
             </label>
           </div>
         </div>
@@ -1919,6 +2289,8 @@ export function init(ctx) {
     findCount: el("[data-find-count]"),
     findCase: el("[data-find-case]"),
     findWord: el("[data-find-word]"),
+    replaceInput: el("#sf-replace-input"),
+    copyStripComments: el("[data-copy-strip-comments]"),
     editor: el("[data-editor]"),
     input: el("[data-input]"),
     draftEnabled: el("[data-draft-enabled]"),
@@ -1943,12 +2315,19 @@ export function init(ctx) {
     commaPosition: el("#sf-comma-position"),
     blankLines: el("#sf-blank-lines"),
     rainbowBrackets: el("#sf-rainbow-brackets"),
+    aliasColors: el("#sf-alias-colors"),
+    lintEnabled: el("#sf-lint-enabled"),
+    lintPanel: el("[data-lint-panel]"),
+    lintSummary: el("[data-lint-summary]"),
+    lintList: el("[data-lint-list]"),
     optionsHint: el("[data-options-hint]"),
     actions: {
       format: el('[data-action="format"]'),
       find: el('[data-action="find"]'),
       findPrev: el('[data-action="find-prev"]'),
       findNext: el('[data-action="find-next"]'),
+      replaceOne: el('[data-action="replace-one"]'),
+      replaceAll: el('[data-action="replace-all"]'),
       findClose: el('[data-action="find-close"]'),
       save: el('[data-action="save-preset"]'),
       more: el('[data-action="more"]'),
@@ -1973,6 +2352,8 @@ export function init(ctx) {
     matchIndex: -1,
     sameText: "",
     sameMatches: [],
+    aliasMarks: [],
+    lintDiags: [],
     lineStarts: [0],
     gutterLines: 0,
     highlightDisabled: false,
@@ -2042,6 +2423,8 @@ export function init(ctx) {
       logicalIndent: nodes.logicalIndent.checked,
       blankLines: nodes.blankLines.value,
       rainbowBrackets: nodes.rainbowBrackets.checked,
+      aliasColors: nodes.aliasColors.checked,
+      lintEnabled: nodes.lintEnabled.checked,
     });
   }
 
@@ -2062,6 +2445,8 @@ export function init(ctx) {
     nodes.logicalIndent.checked = cfg.logicalIndent;
     nodes.blankLines.value = cfg.blankLines;
     nodes.rainbowBrackets.checked = cfg.rainbowBrackets;
+    nodes.aliasColors.checked = cfg.aliasColors;
+    nodes.lintEnabled.checked = cfg.lintEnabled;
     state.syncing = false;
   }
 
@@ -2185,6 +2570,12 @@ export function init(ctx) {
       const clash = state.matches.some((hit) => hit.start < match.end && match.start < hit.end);
       if (!clash) marks.push({ start: match.start, end: match.end, className: "sf-same" });
     });
+    /* 表别名配色（v1.8.6）：与搜索命中 / 相同文本标记重叠时**让位**（v1.7.23 单括号选区让位同口径）
+       —— 用户主动发起的高亮优先于常驻的归属提示。括号匹配标记只落在标点上，不会与别名标记重叠。 */
+    state.aliasMarks.forEach((mark) => {
+      const clash = marks.some((hit) => hit.start < mark.end && mark.start < hit.end);
+      if (!clash) marks.push(mark);
+    });
     computeBracketMarks().forEach((mark) => marks.push(mark));
     marks.sort((a, b) => a.start - b.start); // 渲染合并（单指针 markCursor）假定有序：乱序会整行漏标记
     return marks;
@@ -2247,8 +2638,24 @@ export function init(ctx) {
       state.matches = [];
       state.matchIndex = -1;
       state.sameMatches = [];
+      state.aliasMarks = [];
+      state.lintDiags = [];
     } else {
       state.tokens = tokenize(value, cfg.dialect);
+      /* 表别名配色（v1.8.6）：分析在 tokenize 之后做，复用同一份 token 流，不二次扫描文本 */
+      state.aliasMarks = cfg.aliasColors ? analyzeAliases(state.tokens).marks : [];
+      /* 语法校验（v1.8.8）：把诊断写回对应 token（`lint` 属性），渲染层据此加下划线类；
+         token 对象每次 tokenize 都是新对象，写回不会跨渲染残留 */
+      if (cfg.lintEnabled) {
+        state.lintDiags = lintSql(state.tokens, cfg.dialect);
+        const byStart = new Map(state.lintDiags.map((diag) => [diag.start, diag.severity]));
+        state.tokens.forEach((token) => {
+          const severity = byStart.get(token.start);
+          if (severity) token.lint = severity;
+        });
+      } else {
+        state.lintDiags = [];
+      }
       const bracketInfo = buildBracketPairs(state.tokens);
       state.bracketPairs = bracketInfo.pairs;
       state.bracketTokens = state.tokens.filter(
@@ -2263,6 +2670,7 @@ export function init(ctx) {
       if (state.matchIndex < 0 && state.matches.length > 0) state.matchIndex = 0;
     }
     updateFindCount(findQuery);
+    updateLintPanel();
 
     /* 高亮层：整层一次赋值，逐逻辑行分块 */
     const lineHtml = disabled
@@ -2393,6 +2801,49 @@ export function init(ctx) {
     syncScroll();
   }
 
+  /* ------------------------------------------------------- 语法校验面板（v1.8.8） */
+
+  /** 有问题才出现；摘要行 + 条目列表（行:列 + 消息），点击条目定位到编辑区对应 token。 */
+  function updateLintPanel() {
+    if (!nodes.lintPanel) return;
+    const diags = state.highlightDisabled ? [] : state.lintDiags;
+    const show = diags.length > 0;
+    nodes.lintPanel.hidden = !show;
+    if (!show) return;
+
+    const errors = diags.filter((diag) => diag.severity === "error").length;
+    const warns = diags.length - errors;
+    const cfg = readForm();
+    nodes.lintSummary.textContent =
+      `${diags.length} 个问题（${errors} 个错误 · ${warns} 个警告）· 方言 ${DIALECT_LABEL[cfg.dialect]}`;
+
+    nodes.lintList.innerHTML = diags
+      .map((diag, index) => {
+        const line = lineIndexOf(diag.start) + 1;
+        const col = diag.start - state.lineStarts[line - 1] + 1;
+        const label = diag.severity === "error" ? "错误" : "警告";
+        return (
+          `<button type="button" class="sf-lint__item sf-lint__item--${diag.severity}" data-lint-index="${index}">` +
+          `<span class="sf-lint__badge">${label}</span>` +
+          `<span class="sf-lint__pos">${line}:${col}</span>` +
+          `<span class="sf-lint__msg">${escapeHtml(diag.message)}</span>` +
+          `</button>`
+        );
+      })
+      .join("");
+  }
+
+  /** 点击校验条目：选中对应 token 并滚动进可视区（与搜索定位同一套滚动逻辑） */
+  function gotoLint(index) {
+    const diag = state.lintDiags[index];
+    if (!diag) return;
+    const input = nodes.input;
+    input.focus();
+    input.setSelectionRange(diag.start, diag.end);
+    scrollOffsetIntoView(diag.start);
+    render();
+  }
+
   /** 搜索定位：delta 为 +1 / -1，循环跳转 */
   function gotoMatch(delta) {
     if (state.matches.length === 0) {
@@ -2407,6 +2858,49 @@ export function init(ctx) {
     nodes.input.setSelectionRange(match.start, match.end);
     scrollOffsetIntoView(match.start);
     render();
+  }
+
+  /* ------------------------------------------------------- 搜索替换（v1.8.7） */
+
+  /** 替换当前匹配：选区定位到命中处后走 insertText（优先 execCommand 保留原生撤销栈）。 */
+  function replaceCurrent() {
+    if (nodes.find.hidden || nodes.findInput.value === "") {
+      setStatus("先输入要搜索的关键词。", "warn");
+      return;
+    }
+    if (state.matches.length === 0) {
+      setStatus("未找到匹配项，无法替换。", "warn");
+      return;
+    }
+    const match = state.matches[Math.max(0, Math.min(state.matchIndex, state.matches.length - 1))];
+    const input = nodes.input;
+    input.focus();
+    input.setSelectionRange(match.start, match.end);
+    insertText(nodes.replaceInput.value);
+    /* 替换后 input 事件触发重渲染，matches 按新文本重算：matchIndex 原地保持，
+       恰好指向「下一个」匹配（被替换的那个已从列表消失），连续按 Enter 即逐处替换。 */
+    setStatus("已替换 1 处。", "ok");
+  }
+
+  /** 全部替换：从最后一个匹配向前 setRangeText，前面的偏移量不受影响；完成后派发一次 input 事件。 */
+  function replaceAllMatches() {
+    if (nodes.find.hidden || nodes.findInput.value === "") {
+      setStatus("先输入要搜索的关键词。", "warn");
+      return;
+    }
+    const matches = state.matches;
+    if (matches.length === 0) {
+      setStatus("未找到匹配项，无法替换。", "warn");
+      return;
+    }
+    const input = nodes.input;
+    const replacement = nodes.replaceInput.value;
+    for (let i = matches.length - 1; i >= 0; i -= 1) {
+      input.setRangeText(replacement, matches[i].start, matches[i].end, "end");
+    }
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus();
+    setStatus(`已替换 ${matches.length} 处。`, "ok");
   }
 
   /** Tab / Shift + Tab：单行插入缩进，多行选区整体缩进或反缩进 */
@@ -2864,13 +3358,20 @@ export function init(ctx) {
       setStatus("暂无可复制的内容。", "warn");
       return;
     }
-    const ok = await clipboard.copyText(value);
+    /* 过滤注释（v1.8.7）：只作用于复制出的内容，编辑区原文不动 */
+    const strip = nodes.copyStripComments && nodes.copyStripComments.checked;
+    const text = strip ? stripComments(value, readForm().dialect) : value;
+    if (text.trim() === "") {
+      setStatus("过滤注释后没有可复制的内容。", "warn");
+      return;
+    }
+    const ok = await clipboard.copyText(text);
     if (!ok) {
       setStatus("复制失败，请手动选择文本复制。", "danger");
       return;
     }
     clearTimer("copy");
-    nodes.actions.copy.innerHTML = `${icons.icon("check", 15)} 已复制`;
+    nodes.actions.copy.innerHTML = `${icons.icon("check", 15)} 已复制${strip ? "（去注释）" : ""}`;
     nodes.actions.copy.classList.add("is-ok");
     timers.copy = window.setTimeout(() => {
       nodes.actions.copy.innerHTML = `${icons.icon("copy", 15)} 复制`;
@@ -3003,6 +3504,13 @@ export function init(ctx) {
   bind(nodes.actions.findClose, "click", closeFind);
   bind(nodes.actions.findPrev, "click", () => gotoMatch(-1));
   bind(nodes.actions.findNext, "click", () => gotoMatch(1));
+  bind(nodes.actions.replaceOne, "click", replaceCurrent);
+  bind(nodes.actions.replaceAll, "click", replaceAllMatches);
+  /* 语法校验条目（事件委托）：点击定位到编辑区对应位置 */
+  bind(nodes.lintList, "click", (event) => {
+    const item = event.target.closest("[data-lint-index]");
+    if (item) gotoLint(Number(item.dataset.lintIndex));
+  });
 
   bind(nodes.saveForm, "submit", submitSaveForm);
   bind(nodes.actions.cancelSave, "click", closeSaveForm);
@@ -3039,6 +3547,16 @@ export function init(ctx) {
   bind(nodes.findWord, "change", () => {
     state.matchIndex = 0;
     render();
+  });
+  /* 替换输入框：Enter = 替换当前匹配，Esc = 关闭搜索条（与搜索框同一套退出语义） */
+  bind(nodes.replaceInput, "keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      replaceCurrent();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeFind();
+    }
   });
 
   bind(nodes.importFile, "change", () => {
