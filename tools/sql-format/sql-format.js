@@ -3482,7 +3482,7 @@ export function init(ctx) {
     });
   });
 
-  [nodes.clauseNewline, nodes.parenNewline, nodes.logicalIndent, nodes.rainbowBrackets].forEach((node) => {
+  [nodes.clauseNewline, nodes.parenNewline, nodes.logicalIndent, nodes.rainbowBrackets, nodes.aliasColors, nodes.lintEnabled].forEach((node) => {
     bind(node, "change", () => {
       if (state.syncing) return;
       markDirty();
